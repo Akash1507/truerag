@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-04-18T00:00:00Z  # updated by dev-story: 1-2 review
+last_updated: 2026-04-18T00:00:00Z  # updated by code-review: 1-2 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -45,7 +45,7 @@ development_status:
   # Epic 1: Platform Foundation & Security Baseline
   epic-1: in-progress
   1-1-project-scaffold-and-application-skeleton: done
-  1-2-core-configuration-and-structured-logging: review
+  1-2-core-configuration-and-structured-logging: done
   1-3-error-handling-infrastructure: backlog
   1-4-database-and-external-service-connections-with-health-readiness-endpoints: backlog
   1-5-secrets-management-retry-decorator-and-pii-scrubbing-utility: backlog

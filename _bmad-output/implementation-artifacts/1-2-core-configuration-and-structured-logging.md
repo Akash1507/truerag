@@ -1,6 +1,6 @@
 # Story 1.2: Core Configuration & Structured Logging
 
-Status: review
+Status: done
 
 ## Story
 
@@ -49,6 +49,11 @@ so that all configuration is validated at startup and every log entry is a consi
   - [x] 5.3 Create `tests/core/test_middleware.py`: test that a request to any endpoint (e.g., `GET /docs`) includes `X-Request-ID` header in response; test that `request_id` in the header is a valid UUID v4
   - [x] 5.4 Run `ruff check app/ tests/` and `mypy app/ --strict` — both must exit 0
   - [x] 5.5 Run `pytest tests/ -v` — all tests must pass
+
+### Review Findings
+
+- [x] [Review][Defer] Clarify which settings are required for startup validation — AC1 and Task 5.1 require a missing required setting to raise a startup `ValidationError`, but `Settings` currently gives every field a default in `app/core/config.py`, `get_settings()` can never fail for missing env, and `tests/core/test_config.py` codifies that behavior with `test_missing_field_uses_default`. The story’s own sample `Settings` class also assigns defaults to every field, so the intended required field set is ambiguous. deferred: i will review it later
+- [x] [Review][Patch] Return cleanup tokens from `set_request_context()` and reset the request-scoped context after `call_next()` so `request_id` / tenant / agent context cannot leak beyond a request. [app/utils/observability.py:16]
 
 ## Dev Notes
 

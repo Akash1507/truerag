@@ -1,7 +1,13 @@
 import json
 import logging
 
-from app.utils.observability import JSONFormatter, LatencyTracker, get_logger, set_request_context
+from app.utils.observability import (
+    JSONFormatter,
+    LatencyTracker,
+    get_logger,
+    reset_request_context,
+    set_request_context,
+)
 
 
 def test_get_logger_returns_logger_with_stream_handler() -> None:
@@ -47,7 +53,7 @@ def test_json_formatter_all_required_field_values() -> None:
 
 
 def test_request_id_propagates_to_log() -> None:
-    set_request_context(request_id="test-uuid-1234")
+    tokens = set_request_context(request_id="test-uuid-1234")
     formatter = JSONFormatter()
     record = logging.LogRecord(
         name="test",
@@ -60,6 +66,7 @@ def test_request_id_propagates_to_log() -> None:
     )
     parsed = json.loads(formatter.format(record))
     assert parsed["request_id"] == "test-uuid-1234"
+    reset_request_context(tokens)
 
 
 def test_latency_tracker_returns_nonnegative() -> None:
@@ -68,7 +75,11 @@ def test_latency_tracker_returns_nonnegative() -> None:
 
 
 def test_set_request_context_sets_all_fields() -> None:
-    set_request_context(request_id="req-123", tenant_id="tenant-abc", agent_id="agent-xyz")
+    tokens = set_request_context(
+        request_id="req-123",
+        tenant_id="tenant-abc",
+        agent_id="agent-xyz",
+    )
     formatter = JSONFormatter()
     record = logging.LogRecord(
         name="test",
@@ -83,3 +94,35 @@ def test_set_request_context_sets_all_fields() -> None:
     assert parsed["request_id"] == "req-123"
     assert parsed["tenant_id"] == "tenant-abc"
     assert parsed["agent_id"] == "agent-xyz"
+    reset_request_context(tokens)
+
+
+def test_reset_request_context_restores_previous_values() -> None:
+    outer_tokens = set_request_context(
+        request_id="outer-req",
+        tenant_id="outer-tenant",
+        agent_id="outer-agent",
+    )
+    inner_tokens = set_request_context(
+        request_id="inner-req",
+        tenant_id="inner-tenant",
+        agent_id="inner-agent",
+    )
+
+    reset_request_context(inner_tokens)
+
+    formatter = JSONFormatter()
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="test",
+        args=(),
+        exc_info=None,
+    )
+    parsed = json.loads(formatter.format(record))
+    assert parsed["request_id"] == "outer-req"
+    assert parsed["tenant_id"] == "outer-tenant"
+    assert parsed["agent_id"] == "outer-agent"
+    reset_request_context(outer_tokens)

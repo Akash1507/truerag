@@ -1,0 +1,3 @@
+## Deferred from: code review of 1-2-core-configuration-and-structured-logging.md (2026-04-18)
+
+- Clarify which settings are required for startup validation — AC1 and Task 5.1 require a missing required setting to raise a startup `ValidationError`, but `Settings` currently gives every field a default in `app/core/config.py`, `get_settings()` can never fail for missing env, and `tests/core/test_config.py` codifies that behavior with `test_missing_field_uses_default`. The story’s own sample `Settings` class also assigns defaults to every field, so the intended required field set is ambiguous. Reason: i will review it later.
