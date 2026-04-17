@@ -1,6 +1,6 @@
 # Story 1.1: Project Scaffold & Application Skeleton
 
-Status: review
+Status: done
 
 ## Story
 
@@ -51,6 +51,13 @@ so that all future implementation has a consistent, lintable, type-checkable fou
   - [x] 5.1 Create `tests/conftest.py` — define `app` fixture using `create_app()` and `client` fixture using `httpx.AsyncClient(app=app, base_url="http://test")` with pytest-asyncio
   - [x] 5.2 Create `tests/test_main.py` — test: (a) app instantiates without error, (b) GET /docs returns 200, (c) GET /redoc returns 200, (d) OpenAPI JSON at `/openapi.json` contains `"/v1/"` prefix for every path
   - [x] 5.3 Run `pytest tests/test_main.py -v` and confirm all tests pass
+
+### Review Findings
+
+- [x] [Review][Patch] Ruff pre-commit hook passes an invalid `check` path and fails on clean code [.pre-commit-config.yaml:5]
+- [x] [Review][Patch] Pre-commit hooks are not scoped to project code, so vendored assistant files break commits [.pre-commit-config.yaml:1]
+- [x] [Review][Patch] Mypy pre-commit hook receives appended filenames and crashes instead of checking `app/` only [.pre-commit-config.yaml:13]
+- [x] [Review][Patch] Stub router files are not `ruff format --check` compliant [app/api/v1/agents.py:1]
 
 ## Dev Notes
 
