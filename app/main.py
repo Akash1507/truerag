@@ -37,7 +37,11 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     # pgvector
     try:
         pg_pool = await asyncpg.create_pool(settings.pgvector_dsn, min_size=2, max_size=10)
-        await pg_pool.fetchval("SELECT 1")
+        try:
+            await pg_pool.fetchval("SELECT 1")
+        except Exception:
+            await pg_pool.close()
+            raise
         application.state.pg_pool = pg_pool
         logger.info("pgvector_connected", extra={"operation": "app_startup"})
     except Exception as exc:

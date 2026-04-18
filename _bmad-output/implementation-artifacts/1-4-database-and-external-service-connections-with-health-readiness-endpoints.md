@@ -1,6 +1,6 @@
 # Story 1.4: Database & External Service Connections with Health/Readiness Endpoints
 
-Status: review
+Status: done
 
 ## Story
 
@@ -71,9 +71,15 @@ Then it returns HTTP 503 with the error envelope identifying the failing depende
   - [x] 5.6 Test `GET /v1/ready` with SQS down: mock `sqs.get_queue_attributes` to raise → assert 503
   - [x] 5.7 Test `GET /v1/health` is at `/v1/health` (not `/v1/observability/health`) — assert status 200 using TestClient
   - [x] 5.8 Create test fixtures for mocking `app.state` clients; use `TestClient` from `fastapi.testclient` (sync client, same as Story 1.3)
-  - [x] 5.9 Run `ruff check app/ tests/` — must exit 0
-  - [x] 5.10 Run `mypy app/ --strict` — must exit 0
-  - [x] 5.11 Run `pytest tests/ -v` — all tests must pass
+- [x] 5.9 Run `ruff check app/ tests/` — must exit 0
+- [x] 5.10 Run `mypy app/ --strict` — must exit 0
+- [x] 5.11 Run `pytest tests/ -v` — all tests must pass
+
+### Review Findings
+
+- [x] [Review][Patch] Update middleware tests to call the moved health route [tests/core/test_middleware.py:7]
+- [x] [Review][Patch] Exercise lifespan startup in observability tests so AC1 is actually verified [tests/api/v1/test_observability.py:38]
+- [x] [Review][Patch] Close the asyncpg pool when post-creation validation fails [app/main.py:39]
 
 ## Dev Notes
 

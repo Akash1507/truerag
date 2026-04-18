@@ -1,5 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -121,3 +122,35 @@ def test_ready_sqs_down_returns_503() -> None:
     body = resp.json()
     assert body["error"]["code"] == "PROVIDER_UNAVAILABLE"
     assert "sqs" in body["error"]["message"]
+
+
+def test_lifespan_startup_populates_app_state() -> None:
+    mock_motor = MagicMock()
+    mock_motor.admin.command = AsyncMock(return_value={"ok": 1})
+    mock_motor.close = MagicMock()
+
+    mock_pool = MagicMock()
+    mock_pool.fetchval = AsyncMock(return_value=1)
+    mock_pool.close = AsyncMock()
+
+    with (
+        patch("app.main.AsyncIOMotorClient", return_value=mock_motor),
+        patch("app.main.asyncpg.create_pool", AsyncMock(return_value=mock_pool)),
+        TestClient(create_app()) as client,
+    ):
+        assert client.app.state.motor_client is mock_motor
+        assert client.app.state.pg_pool is mock_pool
+        assert hasattr(client.app.state, "aws_session")
+
+
+def test_lifespan_mongodb_failure_raises_runtime_error() -> None:
+    mock_motor = MagicMock()
+    mock_motor.admin.command = AsyncMock(side_effect=Exception("conn refused"))
+    mock_motor.close = MagicMock()
+
+    with (
+        patch("app.main.AsyncIOMotorClient", return_value=mock_motor),
+        pytest.raises(RuntimeError, match="MongoDB connection failed"),
+        TestClient(create_app()),
+    ):
+        pass
