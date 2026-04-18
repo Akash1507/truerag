@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     mongodb_secret_name: str = "truerag/mongodb/uri"
     pgvector_secret_name: str = "truerag/pgvector/dsn"
 
+    mongodb_uri: str = "mongodb://localhost:27017"
+    pgvector_dsn: str = "postgresql://postgres:postgres@localhost:5432/truerag"
+    aws_endpoint_url: str | None = None
+    sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"
+    s3_document_bucket: str = "truerag-documents"
+    dynamodb_audit_table: str = "truerag-audit-log"
+    dynamodb_jobs_table: str = "truerag-ingestion-jobs"
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
