@@ -8,6 +8,7 @@ class ErrorCode(StrEnum):
     CHUNKING_STRATEGY_MISMATCH = "CHUNKING_STRATEGY_MISMATCH"
     EMBEDDING_MODEL_MISMATCH = "EMBEDDING_MODEL_MISMATCH"
     REINDEX_REQUIRED = "REINDEX_REQUIRED"
+    UNAUTHORIZED = "UNAUTHORIZED"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     INGESTION_ERROR = "INGESTION_ERROR"
@@ -68,5 +69,15 @@ class RateLimitError(TrueRAGError):
         message: str = "Rate limit exceeded",
         code: ErrorCode = ErrorCode.RATE_LIMIT_EXCEEDED,
         http_status: int = 429,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class AuthenticationError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Unauthorized",
+        code: ErrorCode = ErrorCode.UNAUTHORIZED,
+        http_status: int = 401,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)

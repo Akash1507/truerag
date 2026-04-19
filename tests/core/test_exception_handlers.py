@@ -1,8 +1,11 @@
 import re
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core.auth import _hash_api_key
 from app.core.errors import (
     NamespaceViolationError,
     ProviderUnavailableError,
@@ -103,7 +106,24 @@ def test_error_envelope_shape_no_extra_keys() -> None:
 # rather than a separately-constructed test app, so that a future omission
 # or wrong order in create_app() would be caught.
 
+_TEST_API_KEY = "test-exception-handler-key"
+_FAKE_TENANT = {
+    "tenant_id": "test-tenant",
+    "api_key_hash": _hash_api_key(_TEST_API_KEY),
+    "rate_limit_rpm": 60,
+    "created_at": datetime.now(UTC),
+}
+
+
 def make_real_app_with_routes() -> FastAPI:
+    mock_collection = MagicMock()
+    mock_collection.find_one = AsyncMock(return_value=_FAKE_TENANT)
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+    mock_motor = MagicMock()
+    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
+    real_app.state.motor_client = mock_motor
+
     @real_app.get("/test/provider-unavailable-real")
     async def _provider_unavailable() -> None:
         raise ProviderUnavailableError("real app test")
@@ -119,7 +139,9 @@ real_client = TestClient(make_real_app_with_routes(), raise_server_exceptions=Fa
 
 
 def test_real_app_truerag_handler_registered() -> None:
-    response = real_client.get("/test/provider-unavailable-real")
+    response = real_client.get(
+        "/test/provider-unavailable-real", headers={"X-API-Key": _TEST_API_KEY}
+    )
     assert response.status_code == 503
     body = response.json()
     assert body["error"]["code"] == "PROVIDER_UNAVAILABLE"
@@ -127,8 +149,15 @@ def test_real_app_truerag_handler_registered() -> None:
 
 
 def test_real_app_generic_handler_registered() -> None:
-    response = real_client.get("/test/runtime-error-real")
+    response = real_client.get(
+        "/test/runtime-error-real", headers={"X-API-Key": _TEST_API_KEY}
+    )
     assert response.status_code == 500
     body = response.json()
     assert body["error"]["code"] == "INTERNAL_SERVER_ERROR"
     assert "detail" not in body
+
+
+def teardown_module(module: object) -> None:
+    if hasattr(real_app.state, "motor_client"):
+        del real_app.state.motor_client

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,12 +14,13 @@ class Settings(BaseSettings):
     app_env: str = "local"
     log_level: str = "INFO"
     aws_region: str = "us-east-1"
-    default_rate_limit_rpm: int = 60
+    default_rate_limit_rpm: int = Field(default=60, gt=0)
 
     mongodb_secret_name: str = "truerag/mongodb/uri"
     pgvector_secret_name: str = "truerag/pgvector/dsn"
 
     mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_database: str = "truerag"
     pgvector_dsn: str = "postgresql://postgres:postgres@localhost:5432/truerag"
     aws_endpoint_url: str | None = None
     sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"

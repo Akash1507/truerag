@@ -45,7 +45,8 @@ def test_health_returns_200_ok() -> None:
 def test_health_is_at_v1_health_not_observability() -> None:
     client = TestClient(make_healthy_app())
     assert client.get("/v1/health").status_code == 200
-    assert client.get("/v1/observability/health").status_code == 404
+    # Auth middleware intercepts before routing, so old path returns 401.
+    assert client.get("/v1/observability/health").status_code == 401
 
 
 def test_ready_all_healthy_returns_200() -> None:

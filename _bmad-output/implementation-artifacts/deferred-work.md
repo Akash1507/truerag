@@ -1,3 +1,18 @@
+## Deferred from: code review of 1-7-per-tenant-rate-limiting.md (2026-04-20)
+
+- **Cross-replica rate limiting** — `_counters` is process-local; with N replicas a tenant may issue up to N×rpm requests before being rate-limited across all replicas. Explicitly accepted per ADR 007; Redis-backed global enforcement deferred to v2.
+- **Fixed-window 2× boundary burst** — a tenant can exhaust the limit at the end of window T and immediately send another full limit at the start of window T+1, allowing up to 2× limit in any 60-second span. Inherent fixed-window limitation; sliding window deferred to v2.
+- **`_counters` dict grows without bound** — no eviction policy; stale entries for inactive tenants are never removed. Negligible at v1 scale (≤50 tenants); eviction handled naturally in v2 Redis migration.
+- **Auth timing oracle** — missing key (no DB query, fast path) vs invalid key (DB query, slow path) produces observable timing difference. Architectural tradeoff; mitigating with dummy queries adds latency on every unauthenticated request.
+
+## Deferred from: code review of 1-6-api-key-authentication-and-cross-tenant-access-control.md (2026-04-20)
+
+- **Rate limiting not enforced** — `TenantDocument.rate_limit_rpm` is stored and deserialized but never read or enforced in `AuthMiddleware`; rate limiting is Story 1.7 scope.
+- **No API key revocation field** — No `is_active` flag or similar on `TenantDocument`; compromised keys can only be invalidated by deleting the tenant document. Future story concern.
+- **SHA-256 without HMAC salt** — `_hash_api_key` uses bare SHA-256 with no server-side secret; an exfiltrated `tenants` collection enables offline brute-force against common key patterns. Per architecture decision D6; revisit if threat model requires stronger key storage.
+- **`motor_client` not guarded at request time** — `request.app.state.motor_client` is accessed without a `hasattr` guard; misconfigured deployment raises an unstructured `AttributeError` → 500. Startup lifespan is expected to prevent this in practice.
+- **`TenantDocument.created_at` accepts naive datetimes** — Pydantic does not enforce timezone-awareness; naive datetimes from MongoDB could cause silent comparison bugs if expiry logic is added later.
+
 ## Deferred from: code review of 1-5-secrets-management-retry-decorator-and-pii-scrubbing-utility.md (2026-04-19)
 
 - **Thread-safe lazy init of PII engines** (`pii.py:16-18`) — TOCTOU race if `_get_engines()` is called concurrently from a thread pool executor; acceptable under asyncio single-threaded model but will need a `threading.Lock` if PII scrubbing is ever moved to `run_in_executor`.
