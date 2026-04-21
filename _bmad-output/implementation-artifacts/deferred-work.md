@@ -1,3 +1,11 @@
+## Deferred from: code review of 1-8-abstract-interfaces-and-provider-registry.md (2026-04-20)
+
+- **`get_*()` bare `cls()` call** — future concrete providers with required init params (API key, DSN, etc.) will raise `TypeError` at request time; Story 2+ resolves via config injection pattern.
+- **Registry mutable globals** — no runtime write protection; any module can corrupt `RERANKER_REGISTRY` etc.; mypy strict enforces `type[T]` statically; revisit if plugin loading is ever dynamic.
+- **`PassthroughReranker.rerank()` ignores `top_k` with no guard for `top_k <= 0`** — pure passthrough by spec design; concrete rerankers (Epic 7) define their own `top_k` semantics and guards.
+- **Interface contracts for empty inputs** (`chunk("")`, `embed([])`, `upsert([])`) — unspecified at the ABC level; concrete providers (Epics 4–5) define and test their own behavior.
+- **`VectorRecord.vector` no `min_length=1`; `VectorResult.score` no finite-float validation** — provider-specific constraints; Epic 4 adds concrete models with field validators.
+
 ## Deferred from: code review of 1-7-per-tenant-rate-limiting.md (2026-04-20)
 
 - **Cross-replica rate limiting** — `_counters` is process-local; with N replicas a tenant may issue up to N×rpm requests before being rate-limited across all replicas. Explicitly accepted per ADR 007; Redis-backed global enforcement deferred to v2.
