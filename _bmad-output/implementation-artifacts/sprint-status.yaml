@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-04-20T22:00:00Z  # updated by code-review: 1-8 done
+last_updated: 2026-04-22T00:00:00Z  # updated by code-review: 1-9 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   1-6-api-key-authentication-and-cross-tenant-access-control: done
   1-7-per-tenant-rate-limiting: done
   1-8-abstract-interfaces-and-provider-registry: done
-  1-9-semantic-cache-stub: backlog
+  1-9-semantic-cache-stub: done
   epic-1-retrospective: optional
 
   # Epic 2: Tenant & Agent Lifecycle Management

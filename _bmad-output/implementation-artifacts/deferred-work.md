@@ -1,3 +1,8 @@
+## Deferred from: code review of 1-9-semantic-cache-stub.md (2026-04-22)
+
+- **`agent_id` format contract not documented** — stub accepts any `str` including empty string, URL-like strings, etc.; Epic 8's real pgvector implementation must define and validate allowed format (max length, charset) at the boundary to avoid injection or key-collision bugs.
+- **`None` agent_id not tested or guarded** — Python callers can pass `None` at runtime despite `str` hint; stub's no-op body makes it harmless now, but Epic 8's real implementation should add `if not agent_id: raise ValueError` or equivalent validation to prevent unbounded/invalid cache invalidation queries.
+
 ## Deferred from: code review of 1-8-abstract-interfaces-and-provider-registry.md (2026-04-20)
 
 - **`get_*()` bare `cls()` call** — future concrete providers with required init params (API key, DSN, etc.) will raise `TypeError` at request time; Story 2+ resolves via config injection pattern.
