@@ -109,6 +109,7 @@ def test_error_envelope_shape_no_extra_keys() -> None:
 _TEST_API_KEY = "test-exception-handler-key"
 _FAKE_TENANT = {
     "tenant_id": "test-tenant",
+    "name": "test-tenant",
     "api_key_hash": _hash_api_key(_TEST_API_KEY),
     "rate_limit_rpm": 60,
     "created_at": datetime.now(UTC),

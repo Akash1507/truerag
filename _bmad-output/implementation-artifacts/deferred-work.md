@@ -1,3 +1,11 @@
+## Deferred from: code review of 2-1-tenant-registration-and-api-key-issuance.md (2026-04-22)
+
+- **Unauthenticated `POST /v1/tenants` has no secondary rate limit** — known bootstrap design tradeoff; anonymous callers can flood tenant creation; revisit when an admin-auth or network-layer control is added.
+- **`TenantDocument.rate_limit_rpm: int | None`** — pre-existing nullable declaration; service always stores an `int` so the `None` branch is dead code; tighten to `int` with a non-None default when the model is next touched.
+- **`insert_one` mutates `doc` dict in-place (adds `_id`); no `extra="ignore"` on `TenantDocument`** — latent fragility; if `model_validate(stored_doc)` is ever called on a document containing `_id`, Pydantic's default behavior (ignore extra) protects now but is undocumented; add `extra="ignore"` to `TenantDocument.model_config` for explicitness.
+- **Two identity fields (`_id` MongoDB-auto + `tenant_id` app-generated str)** — documented architectural decision in Dev Notes; `tenant_id` has no unique index at the DB level; add `create_index([("tenant_id", 1)], unique=True)` when MongoDB index management is formalized.
+- **MongoDB connection failure during `create_tenant` returns generic 500 instead of `PROVIDER_UNAVAILABLE`** — auth.py already uses `PROVIDER_UNAVAILABLE` for its DB errors; align `tenant_service.py` to wrap motor exceptions similarly when error-handling patterns are standardized.
+
 ## Deferred from: code review of 1-9-semantic-cache-stub.md (2026-04-22)
 
 - **`agent_id` format contract not documented** — stub accepts any `str` including empty string, URL-like strings, etc.; Epic 8's real pgvector implementation must define and validate allowed format (max length, charset) at the boundary to avoid injection or key-collision bugs.

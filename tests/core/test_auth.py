@@ -75,6 +75,7 @@ def auth_test_app_with_tenant() -> FastAPI:
 
     tenant_doc = {
         "tenant_id": "tenant-abc",
+        "name": "tenant-abc",
         "api_key_hash": _hash_api_key("valid-key"),
         "rate_limit_rpm": 60,
         "created_at": datetime.now(UTC),

@@ -23,6 +23,10 @@ SKIP_AUTH_PATHS: frozenset[str] = frozenset({
     "/openapi.json",
 })
 
+SKIP_AUTH_METHOD_PATHS: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/v1/tenants"),
+})
+
 
 def _hash_api_key(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode()).hexdigest()
@@ -41,7 +45,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Normalize trailing slash so /v1/health/ matches /v1/health
         path = request.url.path.rstrip("/") or "/"
-        if path in SKIP_AUTH_PATHS:
+        if path in SKIP_AUTH_PATHS or (request.method, path) in SKIP_AUTH_METHOD_PATHS:
             return await call_next(request)
 
         request_id: str = getattr(request.state, "request_id", "unknown")
@@ -68,7 +72,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 extra={"operation": "authenticate", "extra_data": {"path": request.url.path}},
             )
             return _auth_error(
-                503, ErrorCode.PROVIDER_UNAVAILABLE, "Authentication service unavailable", request_id
+                503,
+                ErrorCode.PROVIDER_UNAVAILABLE,
+                "Authentication service unavailable",
+                request_id,
             )
 
         if tenant_doc is None:

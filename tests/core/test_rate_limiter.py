@@ -16,6 +16,7 @@ _RAW_KEY = "test-api-key"
 _KEY_HASH = hashlib.sha256(_RAW_KEY.encode()).hexdigest()
 _FAKE_TENANT = TenantDocument(
     tenant_id="test-tenant",
+    name="test-tenant",
     api_key_hash=_KEY_HASH,
     rate_limit_rpm=2,
     created_at=datetime.now(UTC),
@@ -25,6 +26,7 @@ _FAKE_TENANT = TenantDocument(
 def _make_tenant_doc(tenant: TenantDocument) -> dict:
     return {
         "tenant_id": tenant.tenant_id,
+        "name": tenant.name,
         "api_key_hash": tenant.api_key_hash,
         "rate_limit_rpm": tenant.rate_limit_rpm,
         "created_at": tenant.created_at,
@@ -120,6 +122,7 @@ async def test_expired_window_resets_counter(rate_limit_app: FastAPI) -> None:
 async def test_default_rate_limit_applied_when_rpm_zero(monkeypatch: pytest.MonkeyPatch) -> None:
     zero_rpm_tenant = TenantDocument(
         tenant_id="zero-tenant",
+        name="zero-tenant",
         api_key_hash=_KEY_HASH,
         rate_limit_rpm=0,
         created_at=datetime.now(UTC),
@@ -142,6 +145,7 @@ async def test_default_rate_limit_applied_when_rpm_zero(monkeypatch: pytest.Monk
 async def test_default_rate_limit_applied_when_rpm_none(monkeypatch: pytest.MonkeyPatch) -> None:
     none_rpm_tenant = TenantDocument(
         tenant_id="none-tenant",
+        name="none-tenant",
         api_key_hash=_KEY_HASH,
         rate_limit_rpm=None,
         created_at=datetime.now(UTC),
@@ -173,12 +177,14 @@ async def test_unauthenticated_request_not_rate_limited(rate_limit_app: FastAPI)
 async def test_independent_counters_per_tenant() -> None:
     tenant_a = TenantDocument(
         tenant_id="tenant-a",
+        name="tenant-a",
         api_key_hash=hashlib.sha256(b"key-a").hexdigest(),
         rate_limit_rpm=2,
         created_at=datetime.now(UTC),
     )
     tenant_b = TenantDocument(
         tenant_id="tenant-b",
+        name="tenant-b",
         api_key_hash=hashlib.sha256(b"key-b").hexdigest(),
         rate_limit_rpm=2,
         created_at=datetime.now(UTC),

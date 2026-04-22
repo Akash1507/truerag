@@ -2,6 +2,8 @@ from enum import StrEnum
 
 
 class ErrorCode(StrEnum):
+    TENANT_ALREADY_EXISTS = "TENANT_ALREADY_EXISTS"
+    TENANT_NOT_FOUND = "TENANT_NOT_FOUND"
     AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
     NAMESPACE_VIOLATION = "NAMESPACE_VIOLATION"
     PII_DETECTED = "PII_DETECTED"
@@ -69,6 +71,26 @@ class RateLimitError(TrueRAGError):
         message: str = "Rate limit exceeded",
         code: ErrorCode = ErrorCode.RATE_LIMIT_EXCEEDED,
         http_status: int = 429,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class TenantAlreadyExistsError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Tenant already exists",
+        code: ErrorCode = ErrorCode.TENANT_ALREADY_EXISTS,
+        http_status: int = 409,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class TenantNotFoundError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Tenant not found",
+        code: ErrorCode = ErrorCode.TENANT_NOT_FOUND,
+        http_status: int = 404,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
 
