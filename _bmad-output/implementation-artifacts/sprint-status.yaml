@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-04-22T00:00:00Z  # updated by dev-story: 2-2 review
+last_updated: 2026-04-23T00:00:00Z  # updated by code-review: 2-2 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   # Epic 2: Tenant & Agent Lifecycle Management
   epic-2: in-progress
   2-1-tenant-registration-and-api-key-issuance: done
-  2-2-tenant-listing-and-deletion: review
+  2-2-tenant-listing-and-deletion: done
   2-3-rag-agent-creation-with-full-pipeline-configuration: backlog
   2-4-agent-retrieval-and-listing: backlog
   2-5-runtime-agent-config-update-and-mismatch-detection: backlog

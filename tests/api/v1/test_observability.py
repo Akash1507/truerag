@@ -126,8 +126,13 @@ def test_ready_sqs_down_returns_503() -> None:
 
 
 def test_lifespan_startup_populates_app_state() -> None:
+    mock_collection = MagicMock()
+    mock_collection.create_index = AsyncMock(return_value="name_1")
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
     mock_motor = MagicMock()
     mock_motor.admin.command = AsyncMock(return_value={"ok": 1})
+    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
     mock_motor.close = MagicMock()
 
     mock_pool = MagicMock()

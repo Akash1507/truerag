@@ -4,6 +4,8 @@ from enum import StrEnum
 class ErrorCode(StrEnum):
     TENANT_ALREADY_EXISTS = "TENANT_ALREADY_EXISTS"
     TENANT_NOT_FOUND = "TENANT_NOT_FOUND"
+    INVALID_CURSOR = "INVALID_CURSOR"
+    FORBIDDEN = "FORBIDDEN"
     AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
     NAMESPACE_VIOLATION = "NAMESPACE_VIOLATION"
     PII_DETECTED = "PII_DETECTED"
@@ -91,6 +93,26 @@ class TenantNotFoundError(TrueRAGError):
         message: str = "Tenant not found",
         code: ErrorCode = ErrorCode.TENANT_NOT_FOUND,
         http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class InvalidCursorError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Invalid cursor",
+        code: ErrorCode = ErrorCode.INVALID_CURSOR,
+        http_status: int = 400,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class ForbiddenError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Forbidden",
+        code: ErrorCode = ErrorCode.FORBIDDEN,
+        http_status: int = 403,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
 

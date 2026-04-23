@@ -1,3 +1,9 @@
+## Deferred from: code review of 2-2-tenant-listing-and-deletion.md (2026-04-23)
+
+- **`VECTOR_STORE_REGISTRY` empty — `delete_tenant` returns 503 for tenants with agents** — intentional by spec (Dev Notes explicitly acknowledge this); registry is populated in Epic 4; no agents exist until Story 2.3 so the path is not exercised yet.
+- **Unsigned cursor allows position-based tenant enumeration** — authenticated callers can construct any valid ObjectId cursor string to seek to an arbitrary page; spec does not require HMAC-signed cursors; harden in a future security pass if cursor opacity becomes a requirement.
+- **Open tenant registration — no admin gate on `POST /v1/tenants`** — v1 bootstrap model; admin-auth controls (bootstrap token, IP allowlist) deferred to post-v1 hardening.
+
 ## Deferred from: code review of 2-1-tenant-registration-and-api-key-issuance.md (2026-04-22)
 
 - **Unauthenticated `POST /v1/tenants` has no secondary rate limit** — known bootstrap design tradeoff; anonymous callers can flood tenant creation; revisit when an admin-auth or network-layer control is added.

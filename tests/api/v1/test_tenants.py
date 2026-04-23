@@ -357,7 +357,7 @@ async def test_list_tenants_limit_above_max_returns_422() -> None:
 async def test_delete_tenant_success_no_agents() -> None:
     tenant_doc = {
         "_id": ObjectId(),
-        "tenant_id": "t1",
+        "tenant_id": FAKE_CALLER["tenant_id"],
         "name": "acme",
         "api_key_hash": "hash",
         "rate_limit_rpm": 60,
@@ -365,7 +365,9 @@ async def test_delete_tenant_success_no_agents() -> None:
     }
     app = make_authed_app_for_delete(tenant_doc=tenant_doc, agent_docs=[])
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.delete("/v1/tenants/t1", headers={"X-API-Key": FAKE_API_KEY})
+        response = await client.delete(
+            f"/v1/tenants/{FAKE_CALLER['tenant_id']}", headers={"X-API-Key": FAKE_API_KEY}
+        )
 
     assert response.status_code == 204
     assert response.content == b""
@@ -376,12 +378,25 @@ async def test_delete_tenant_not_found_returns_404() -> None:
     app = make_authed_app_for_delete(tenant_doc=None)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.delete(
-            "/v1/tenants/nonexistent", headers={"X-API-Key": FAKE_API_KEY}
+            f"/v1/tenants/{FAKE_CALLER['tenant_id']}", headers={"X-API-Key": FAKE_API_KEY}
         )
 
     assert response.status_code == 404
     body = response.json()
     assert body["error"]["code"] == "TENANT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_delete_tenant_cross_tenant_returns_403() -> None:
+    app = make_authed_app_for_delete(tenant_doc=None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.delete(
+            "/v1/tenants/other-tenant-id", headers={"X-API-Key": FAKE_API_KEY}
+        )
+
+    assert response.status_code == 403
+    body = response.json()
+    assert body["error"]["code"] == "FORBIDDEN"
 
 
 @pytest.mark.asyncio

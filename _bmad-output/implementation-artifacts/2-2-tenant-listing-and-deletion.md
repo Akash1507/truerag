@@ -1,6 +1,6 @@
 # Story 2.2: Tenant Listing & Deletion
 
-Status: review
+Status: done
 
 ## Story
 
@@ -420,6 +420,18 @@ None — implementation proceeded without blockers.
 - `tests/api/v1/test_tenants.py` (modified)
 - `tests/services/test_tenant_service.py` (modified)
 
+### Review Findings
+
+- [x] [Review][Defer] Open tenant registration — no admin gate — deferred, pre-existing (v1 bootstrap model; admin-auth controls deferred to post-v1 hardening)
+- [x] [Review][Patch] Any authenticated tenant can delete any other tenant — restrict to self-delete only [app/api/v1/tenants.py] — fixed: `caller: TenantDocument = Depends(get_current_tenant)`, raises `ForbiddenError` if `caller.tenant_id != tenant_id`.
+- [x] [Review][Patch] `delete_tenant` non-atomic — reverse deletion order: delete MongoDB records first, then namespaces [app/services/tenant_service.py] — fixed: `delete_many` agents + `delete_one` tenant before namespace loop.
+- [x] [Review][Patch] Missing unique index on `tenants.name` makes `DuplicateKeyError` catch dead code [app/main.py] — fixed: `create_index([("name", 1)], unique=True)` added to lifespan.
+- [x] [Review][Patch] `rate_limit_rpm=0` silently overwritten by `or` fallback [app/services/tenant_service.py] — fixed: walrus operator with explicit `is not None` check.
+- [x] [Review][Patch] `INVALID_CURSOR` 400 response uses non-standard error envelope [app/api/v1/tenants.py] — fixed: added `InvalidCursorError` / `ErrorCode.INVALID_CURSOR` to `errors.py`; route raises typed error instead of raw `HTTPException`.
+- [x] [Review][Defer] `VECTOR_STORE_REGISTRY` empty — `delete_tenant` always raises 503 for tenants with agents [app/providers/registry.py] — deferred, pre-existing (documented in Dev Notes; no agents exist until Story 2.3; registry populated in Epic 4)
+- [x] [Review][Defer] Unsigned cursor allows position-based tenant enumeration [app/utils/pagination.py] — deferred, pre-existing (authenticated callers can construct any valid ObjectId cursor; no HMAC signing required per spec; harden in a future security pass)
+
 ## Change Log
 
 - 2026-04-22: Story 2.2 implemented — tenant listing (cursor pagination) and deletion (with agent namespace cleanup). 20 new tests added, 153 total passing.
+- 2026-04-23: Code review completed — 5 patches applied, 3 deferred, 4 dismissed. 154 tests passing.

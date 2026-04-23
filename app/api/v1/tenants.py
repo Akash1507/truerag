@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.core.auth import get_current_tenant
 from app.core.config import get_settings
+from app.core.errors import ForbiddenError, InvalidCursorError
 from app.models.tenant import (
     TenantCreateRequest,
     TenantCreateResponse,
@@ -44,10 +45,7 @@ async def list_tenants_route(
     try:
         items, next_cursor = await tenant_service.list_tenants(db, cursor, limit)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "INVALID_CURSOR", "message": str(exc)},
-        ) from exc
+        raise InvalidCursorError(str(exc)) from exc
     return TenantListResponse(items=items, next_cursor=next_cursor)
 
 
@@ -55,8 +53,10 @@ async def list_tenants_route(
 async def delete_tenant_route(
     tenant_id: str,
     request: Request,
-    _: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> None:
+    if caller.tenant_id != tenant_id:
+        raise ForbiddenError("Tenants may only delete themselves")
     settings = get_settings()
     db = request.app.state.motor_client[settings.mongodb_database]
     await tenant_service.delete_tenant(tenant_id, db)

@@ -28,6 +28,8 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         motor_client: AsyncIOMotorClient = AsyncIOMotorClient(settings.mongodb_uri)  # type: ignore[type-arg]
         await motor_client.admin.command("ping")
         application.state.motor_client = motor_client
+        db = motor_client[settings.mongodb_database]
+        await db["tenants"].create_index([("name", 1)], unique=True)
         logger.info("mongodb_connected", extra={"operation": "app_startup"})
     except Exception as exc:
         logger.error(

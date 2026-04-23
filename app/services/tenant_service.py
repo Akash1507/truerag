@@ -78,7 +78,11 @@ async def list_tenants(
         TenantListItem(
             tenant_id=doc["tenant_id"],
             name=doc["name"],
-            rate_limit_rpm=doc.get("rate_limit_rpm") or settings.default_rate_limit_rpm,
+            rate_limit_rpm=(
+                rpm
+                if (rpm := doc.get("rate_limit_rpm")) is not None
+                else settings.default_rate_limit_rpm
+            ),
             created_at=doc["created_at"],
         )
         for doc in raw_docs
@@ -98,15 +102,15 @@ async def delete_tenant(tenant_id: str, db: AsyncIOMotorDatabase[Any]) -> None:
 
     agents: list[dict[str, Any]] = await db["agents"].find({"tenant_id": tenant_id}).to_list(None)
 
+    await db["agents"].delete_many({"tenant_id": tenant_id})
+    await db["tenants"].delete_one({"tenant_id": tenant_id})
+
     for agent in agents:
         vs_type: str = agent.get("vector_store", "pgvector")
         agent_id: str = agent["agent_id"]
         namespace = f"{tenant_id}_{agent_id}"
         vector_store = get_vector_store(vs_type)
         await vector_store.delete_namespace(namespace)
-
-    await db["agents"].delete_many({"tenant_id": tenant_id})
-    await db["tenants"].delete_one({"tenant_id": tenant_id})
 
     logger.info(
         "tenant_deleted",
