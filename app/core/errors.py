@@ -6,6 +6,8 @@ class ErrorCode(StrEnum):
     TENANT_NOT_FOUND = "TENANT_NOT_FOUND"
     INVALID_CURSOR = "INVALID_CURSOR"
     FORBIDDEN = "FORBIDDEN"
+    AGENT_CONFIG_INVALID = "AGENT_CONFIG_INVALID"
+    AGENT_ALREADY_EXISTS = "AGENT_ALREADY_EXISTS"
     AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
     NAMESPACE_VIOLATION = "NAMESPACE_VIOLATION"
     PII_DETECTED = "PII_DETECTED"
@@ -123,5 +125,35 @@ class AuthenticationError(TrueRAGError):
         message: str = "Unauthorized",
         code: ErrorCode = ErrorCode.UNAUTHORIZED,
         http_status: int = 401,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class AgentConfigInvalidError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Invalid agent configuration",
+        code: ErrorCode = ErrorCode.AGENT_CONFIG_INVALID,
+        http_status: int = 400,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class AgentAlreadyExistsError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Agent already exists",
+        code: ErrorCode = ErrorCode.AGENT_ALREADY_EXISTS,
+        http_status: int = 409,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class AgentNotFoundError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Agent not found",
+        code: ErrorCode = ErrorCode.AGENT_NOT_FOUND,
+        http_status: int = 404,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)

@@ -160,3 +160,37 @@ def test_lifespan_mongodb_failure_raises_runtime_error() -> None:
         TestClient(create_app()),
     ):
         pass
+
+
+def test_lifespan_agents_index_failure_does_not_abort_boot() -> None:
+    """Each agent index is attempted independently; failures do not prevent startup."""
+    agents_col = MagicMock()
+    agents_col.create_index = AsyncMock(side_effect=Exception("duplicate key on existing data"))
+
+    tenants_col = MagicMock()
+    tenants_col.create_index = AsyncMock(return_value="name_1")
+
+    def get_collection(name: str) -> MagicMock:
+        return agents_col if name == "agents" else tenants_col
+
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(side_effect=get_collection)
+
+    mock_motor = MagicMock()
+    mock_motor.admin.command = AsyncMock(return_value={"ok": 1})
+    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
+    mock_motor.close = MagicMock()
+
+    mock_pool = MagicMock()
+    mock_pool.fetchval = AsyncMock(return_value=1)
+    mock_pool.close = AsyncMock()
+
+    with (
+        patch("app.main.AsyncIOMotorClient", return_value=mock_motor),
+        patch("app.main.asyncpg.create_pool", AsyncMock(return_value=mock_pool)),
+        TestClient(create_app()) as client,
+    ):
+        assert client.app.state.motor_client is mock_motor
+        # Both index creations are attempted independently; confirm both were called
+        # even though the first one raised.
+        assert agents_col.create_index.call_count == 2

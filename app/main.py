@@ -23,7 +23,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info("startup", extra={"operation": "app_startup"})
 
-    # MongoDB
+    # MongoDB — connectivity and tenant index are fatal; app cannot run without them.
     try:
         motor_client: AsyncIOMotorClient = AsyncIOMotorClient(settings.mongodb_uri)  # type: ignore[type-arg]
         await motor_client.admin.command("ping")
@@ -37,6 +37,31 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
             extra={"operation": "app_startup", "extra_data": {"error": str(exc)}},
         )
         raise RuntimeError(f"MongoDB connection failed: {exc}") from exc
+
+    # Agent indexes are non-fatal: a failure here means pre-existing duplicate data
+    # from before this index was introduced. The app still starts so operators can
+    # inspect and migrate data; the service-level duplicate check remains the guard.
+    # Each index is attempted independently so a failure on one does not skip the other.
+    try:
+        await db["agents"].create_index([("tenant_id", 1), ("name", 1)], unique=True)
+    except Exception as exc:
+        logger.warning(
+            "agents_index_skipped",
+            extra={
+                "operation": "app_startup",
+                "extra_data": {"index": "tenant_id,name", "error": str(exc)},
+            },
+        )
+    try:
+        await db["agents"].create_index([("agent_id", 1)], unique=True)
+    except Exception as exc:
+        logger.warning(
+            "agents_index_skipped",
+            extra={
+                "operation": "app_startup",
+                "extra_data": {"index": "agent_id", "error": str(exc)},
+            },
+        )
 
     # pgvector
     try:
