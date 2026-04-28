@@ -3,7 +3,13 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from app.core.auth import get_current_tenant
 from app.core.config import get_settings
 from app.core.errors import ForbiddenError, InvalidCursorError
-from app.models.agent import AgentCreateRequest, AgentCreateResponse, AgentListResponse
+from app.models.agent import (
+    AgentConfigUpdateRequest,
+    AgentCreateRequest,
+    AgentCreateResponse,
+    AgentListResponse,
+    AgentUpdateResponse,
+)
 from app.models.tenant import TenantDocument
 from app.services import agent_service
 from app.utils.pagination import DEFAULT_PAGE_SIZE
@@ -54,3 +60,31 @@ async def get_agent_route(
     db = request.app.state.motor_client[settings.mongodb_database]
     agent = await agent_service.get_agent(agent_id, caller.tenant_id, db)
     return AgentCreateResponse(**agent.model_dump())
+
+
+@router.patch("/{agent_id}/config", response_model=AgentUpdateResponse)
+async def update_agent_config_route(
+    agent_id: str,
+    body: AgentConfigUpdateRequest,
+    request: Request,
+    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+) -> AgentUpdateResponse:
+    settings = get_settings()
+    db = request.app.state.motor_client[settings.mongodb_database]
+    agent, warnings = await agent_service.update_agent_config(
+        agent_id, caller.tenant_id, body, db
+    )
+    return AgentUpdateResponse(**agent.model_dump(), warnings=warnings)
+
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent_route(
+    agent_id: str,
+    request: Request,
+    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+) -> None:
+    settings = get_settings()
+    db = request.app.state.motor_client[settings.mongodb_database]
+    await agent_service.delete_agent(
+        agent_id, caller.tenant_id, db, request.app.state.aws_session, settings
+    )

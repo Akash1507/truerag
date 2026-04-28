@@ -18,6 +18,8 @@ class ErrorCode(StrEnum):
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     INGESTION_ERROR = "INGESTION_ERROR"
+    PERMANENT_INGESTION_ERROR = "PERMANENT_INGESTION_ERROR"
+    UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -155,5 +157,25 @@ class AgentNotFoundError(TrueRAGError):
         message: str = "Agent not found",
         code: ErrorCode = ErrorCode.AGENT_NOT_FOUND,
         http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class PermanentIngestionError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Permanent ingestion failure — document cannot be retried",
+        code: ErrorCode = ErrorCode.PERMANENT_INGESTION_ERROR,
+        http_status: int = 500,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class UnsupportedFileTypeError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Unsupported file type",
+        code: ErrorCode = ErrorCode.UNSUPPORTED_FILE_TYPE,
+        http_status: int = 400,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
