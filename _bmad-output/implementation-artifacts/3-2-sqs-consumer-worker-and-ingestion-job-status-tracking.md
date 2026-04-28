@@ -6,7 +6,7 @@
 **I want** the SQS worker to process enqueued documents and update job status at each stage,
 **So that** the ingestion pipeline runs asynchronously without blocking the API, and I can observe what stage my document is at (FR12, NFR14, NFR16).
 
-**Status:** review
+**Status:** done
 
 ---
 

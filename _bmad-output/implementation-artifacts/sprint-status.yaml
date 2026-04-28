@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-04-29T00:00:00Z  # updated: 3-2 review
+last_updated: 2026-04-29T00:00:00Z  # updated: 3-2 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -68,7 +68,7 @@ development_status:
   # Epic 3: Async Document Ingestion Pipeline
   epic-3: in-progress
   3-1-document-upload-s3-archive-and-sqs-enqueue: done
-  3-2-sqs-consumer-worker-and-ingestion-job-status-tracking: review
+  3-2-sqs-consumer-worker-and-ingestion-job-status-tracking: done
   3-3-ingestion-status-polling-and-document-listing: backlog
   3-4-pii-scrubbing-at-ingestion: backlog
   epic-3-retrospective: optional
