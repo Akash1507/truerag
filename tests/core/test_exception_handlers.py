@@ -1,6 +1,6 @@
 import re
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -107,24 +107,12 @@ def test_error_envelope_shape_no_extra_keys() -> None:
 # or wrong order in create_app() would be caught.
 
 _TEST_API_KEY = "test-exception-handler-key"
-_FAKE_TENANT = {
-    "tenant_id": "test-tenant",
-    "name": "test-tenant",
-    "api_key_hash": _hash_api_key(_TEST_API_KEY),
-    "rate_limit_rpm": 60,
-    "created_at": datetime.now(UTC),
-}
+_FAKE_TENANT = MagicMock()
+_FAKE_TENANT.tenant_id = "test-tenant"
+_FAKE_TENANT.rate_limit_rpm = 60
 
 
 def make_real_app_with_routes() -> FastAPI:
-    mock_collection = MagicMock()
-    mock_collection.find_one = AsyncMock(return_value=_FAKE_TENANT)
-    mock_db = MagicMock()
-    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-    mock_motor = MagicMock()
-    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
-    real_app.state.motor_client = mock_motor
-
     @real_app.get("/test/provider-unavailable-real")
     async def _provider_unavailable() -> None:
         raise ProviderUnavailableError("real app test")
@@ -136,6 +124,11 @@ def make_real_app_with_routes() -> FastAPI:
     return real_app
 
 
+_tenant_dao_patcher = patch(
+    "app.core.auth.tenant_dao.find_one",
+    AsyncMock(return_value=_FAKE_TENANT),
+)
+_tenant_dao_patcher.start()
 real_client = TestClient(make_real_app_with_routes(), raise_server_exceptions=False)
 
 
@@ -160,5 +153,4 @@ def test_real_app_generic_handler_registered() -> None:
 
 
 def teardown_module(module: object) -> None:
-    if hasattr(real_app.state, "motor_client"):
-        del real_app.state.motor_client
+    _tenant_dao_patcher.stop()

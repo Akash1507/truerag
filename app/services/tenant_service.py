@@ -9,6 +9,8 @@ from app.core.config import get_settings
 from app.core.dependencies import get_vector_store
 from app.core.errors import TenantAlreadyExistsError, TenantNotFoundError
 from app.db.dao.agent_dao import agent_dao
+from app.db.dao.document_dao import document_dao
+from app.db.dao.ingestion_job_dao import ingestion_job_dao
 from app.db.dao.tenant_dao import tenant_dao
 from app.models.tenant import TenantDocument, TenantListItem
 from app.utils.observability import get_logger
@@ -59,7 +61,7 @@ async def list_tenants(
     if has_more:
         docs = docs[:limit]
 
-    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs[-1].id else None
+    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs and docs[-1].id else None
     settings = get_settings()
     items = [
         TenantListItem(
@@ -90,6 +92,8 @@ async def delete_tenant(tenant_id: str) -> None:
     agents = await agent_dao.find({"tenant_id": tenant_id})
 
     await agent_dao.delete_many({"tenant_id": tenant_id})
+    await document_dao.delete_many({"tenant_id": tenant_id})
+    await ingestion_job_dao.delete_many({"tenant_id": tenant_id})
     await tenant_dao.delete_one({"tenant_id": tenant_id})
 
     for agent in agents:
@@ -97,7 +101,16 @@ async def delete_tenant(tenant_id: str) -> None:
         agent_id = agent.agent_id
         namespace = f"{tenant_id}_{agent_id}"
         vector_store = get_vector_store(vs_type)
-        await vector_store.delete_namespace(namespace)
+        try:
+            await vector_store.delete_namespace(namespace)
+        except Exception as exc:
+            logger.warning(
+                "vector_namespace_delete_failed",
+                extra={
+                    "operation": "delete_tenant",
+                    "extra_data": {"namespace": namespace, "error": str(exc)},
+                },
+            )
 
     logger.info(
         "tenant_deleted",

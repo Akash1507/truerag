@@ -1,6 +1,7 @@
 import hashlib
+from collections.abc import Generator
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -36,7 +37,8 @@ def test_verify_tenant_ownership_different_tenant() -> None:
 
 
 @pytest.fixture
-def auth_test_app() -> FastAPI:
+def auth_test_app() -> Generator[FastAPI, None, None]:
+    from app.core import auth as auth_module
     from app.core.auth import AuthMiddleware
     from app.core.middleware import RequestIDMiddleware
 
@@ -56,14 +58,13 @@ def auth_test_app() -> FastAPI:
 
     mini_app.add_middleware(AuthMiddleware)
     mini_app.add_middleware(RequestIDMiddleware)
-    from app.core import auth as auth_module
-    auth_module.tenant_dao.find_one = AsyncMock(return_value=None)  # type: ignore[method-assign]
-
-    return mini_app
+    with patch.object(auth_module.tenant_dao, "find_one", AsyncMock(return_value=None)):
+        yield mini_app
 
 
 @pytest.fixture
-def auth_test_app_with_tenant() -> FastAPI:
+def auth_test_app_with_tenant() -> Generator[FastAPI, None, None]:
+    from app.core import auth as auth_module
     from app.core.auth import AuthMiddleware
     from app.core.middleware import RequestIDMiddleware
 
@@ -83,12 +84,12 @@ def auth_test_app_with_tenant() -> FastAPI:
 
     mini_app.add_middleware(AuthMiddleware)
     mini_app.add_middleware(RequestIDMiddleware)
-    from app.core import auth as auth_module
-    auth_module.tenant_dao.find_one = AsyncMock(
-        return_value=auth_module.TenantDocument.model_validate(tenant_doc)
-    )  # type: ignore[method-assign]
-
-    return mini_app
+    with patch.object(
+        auth_module.tenant_dao,
+        "find_one",
+        AsyncMock(return_value=auth_module.TenantDocument.model_validate(tenant_doc)),
+    ):
+        yield mini_app
 
 
 # --- Integration tests through the middleware ---

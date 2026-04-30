@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 
 from app.core.auth import get_current_tenant
+from app.core.config import get_settings
 from app.core.errors import ForbiddenError, InvalidCursorError
 from app.models.tenant import (
     TenantCreateRequest,
@@ -21,7 +22,11 @@ async def register_tenant(body: TenantCreateRequest) -> TenantCreateResponse:
         tenant_id=tenant.tenant_id,
         name=tenant.name,
         api_key=raw_key,
-        rate_limit_rpm=tenant.rate_limit_rpm or 0,
+        rate_limit_rpm=(
+            tenant.rate_limit_rpm
+            if tenant.rate_limit_rpm is not None
+            else get_settings().default_rate_limit_rpm
+        ),
         created_at=tenant.created_at,
     )
 

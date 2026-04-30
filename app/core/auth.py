@@ -1,11 +1,9 @@
 import hashlib
 
-from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.core.config import get_settings
 from app.core.errors import AuthenticationError, ErrorCode, NamespaceViolationError
 from app.db.dao.tenant_dao import tenant_dao
 from app.models.tenant import TenantDocument
@@ -57,7 +55,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _auth_error(401, ErrorCode.UNAUTHORIZED, "Missing X-API-Key header", request_id)
 
         key_hash = _hash_api_key(raw_key)
-        get_settings()
 
         try:
             tenant = await tenant_dao.find_one({"api_key_hash": key_hash})
@@ -80,24 +77,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return _auth_error(401, ErrorCode.UNAUTHORIZED, "Invalid API key", request_id)
 
-        try:
-            validated_tenant = TenantDocument.model_validate(tenant.model_dump())
-        except ValidationError:
-            logger.error(
-                "auth_tenant_invalid",
-                extra={"operation": "authenticate", "extra_data": {"path": request.url.path}},
-            )
-            return _auth_error(
-                500, ErrorCode.INTERNAL_SERVER_ERROR, "Internal server error", request_id
-            )
-
-        request.state.tenant = validated_tenant
+        request.state.tenant = tenant
         logger.info(
             "auth_ok",
             extra={
                 "operation": "authenticate",
                 "extra_data": {
-                    "tenant_id": validated_tenant.tenant_id,
+                    "tenant_id": tenant.tenant_id,
                     "path": request.url.path,
                 },
             },

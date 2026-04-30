@@ -132,7 +132,7 @@ async def list_agents(
     if has_more:
         docs = docs[:limit]
 
-    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs[-1].id else None
+    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs and docs[-1].id else None
     items = docs
 
     logger.debug(
@@ -224,7 +224,8 @@ async def update_agent_config(
         update_dict["updated_at"] = datetime.now(UTC)
         await agent_dao.update({"agent_id": agent_id}, update_dict)
         updated_doc = await agent_dao.find_one({"agent_id": agent_id})
-        assert updated_doc is not None
+        if updated_doc is None:
+            raise AgentNotFoundError(f"Agent '{agent_id}' not found after update")
     else:
         updated_doc = doc
 

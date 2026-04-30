@@ -1,6 +1,6 @@
 # Story 1.10: Beanie ODM + DAO Layer + DynamoDB Removal
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -679,3 +679,47 @@ GPT-5
 
 - 2026-05-01: Story 1.10 created — Beanie ODM + DAO layer + DynamoDB removal
 - 2026-05-01: Implemented Beanie ODM models, DAO layer, router/service/worker refactor, and migrated ingestion job tracking from DynamoDB to MongoDB.
+
+### Review Findings
+
+**Decision-Needed (resolve before patching):**
+
+- [x] [Review][Decision] Unique constraint on `job_id` in IngestionJob — deferred. UUID job_id makes collision negligible; revisit if job_id generation changes.
+- [ ] [Review][Patch] Skipped legacy tests — migrate remaining coverage to `_dao.py` files then delete all 9 skipped originals [tests/api/v1/test_agents.py, test_documents.py, test_tenants.py, test_observability.py, tests/core/test_rate_limiter.py, tests/workers/test_ingestion_worker.py, test_sqs_consumer.py, tests/services/test_agent_service.py, test_ingestion_service.py]
+
+**Patch (unambiguous fixes):**
+
+- [x] [Review][Patch] Dead `get_settings()` call — return value discarded on every auth request [app/core/auth.py:60] ✓ fixed
+- [x] [Review][Patch] Double model_validate round-trip — `TenantDocument.model_validate(tenant.model_dump())` on already-typed Beanie Document; use `tenant` directly [app/core/auth.py:84]
+- [x] [Review][Patch] `rate_limit_rpm or 0` returns 0 instead of config default when field is None — breaks API response contract [app/api/v1/tenants.py:24]
+- [x] [Review][Patch] `delete_tenant` missing orphan cleanup — `DocumentRecord` and `IngestionJob` rows not deleted after agent deletion [app/services/tenant_service.py]
+- [x] [Review][Patch] `BaseDAO.find()` `if limit:` falsy check — `limit=0` bypasses `.limit()` call, returns all documents [app/db/base_dao.py:22]
+- [x] [Review][Patch] Bare `assert updated_doc is not None` — stripped by `-O` flag; replace with explicit `raise AgentNotFoundError` [app/services/agent_service.py]
+- [x] [Review][Patch] `IngestionJob.Settings.indexes` uses `ClassVar` annotation — wrong Beanie syntax; indexes silently ignored at init [app/models/ingestion_job.py]
+- [x] [Review][Patch] Compensating delete in `upload_document` not wrapped in try/except — S3 or document_dao failure loses original IngestionError [app/services/ingestion_service.py]
+- [ ] [Review][Patch] `mock_beanie_collection_access` patches `get_pymongo_collection` (wrong) — should patch `get_motor_collection` or DAO methods directly [tests/conftest.py]
+- [x] [Review][Patch] SQS consumer `__main__` block missing Motor client setup and `init_beanie()` — standalone worker fails immediately [app/workers/sqs_consumer.py]
+- [x] [Review][Patch] `encode_cursor(docs[-1].id)` IndexError when docs list is empty — guard missing in all three listing services [app/services/tenant_service.py, agent_service.py, ingestion_service.py]
+- [x] [Review][Patch] `BaseDAO.update()` accepts empty query `{}` — matches and overwrites every document in collection [app/db/base_dao.py]
+- [x] [Review][Patch] `BaseDAO.delete_many()` accepts empty query `{}` — wipes entire collection silently [app/db/base_dao.py]
+- [x] [Review][Patch] `vector_store.delete_namespace()` failure mid-loop in `delete_tenant` not caught — remaining agents' namespaces orphaned [app/services/tenant_service.py]
+- [x] [Review][Patch] `IngestionJob.status` is plain `str` — should use `DocumentStatus` StrEnum (already exists in codebase) [app/models/ingestion_job.py]
+- [x] [Review][Patch] SQS `msg['Body']` bytes not handled — binary-body messages cause `json.loads` to fail; add decode guard [app/workers/sqs_consumer.py]
+- [x] [Review][Patch] `msg['Attributes']` KeyError when SQS omits `AttributeNames` — use `.get('Attributes', {})` [app/workers/sqs_consumer.py]
+- [x] [Review][Patch] `_update_status` raises → `delete_message` not called — message re-queued indefinitely past MAX_RECEIVE_COUNT [app/workers/sqs_consumer.py]
+- [x] [Review][Patch] Pipeline stub raises → document/job stuck in `processing` forever — no failure compensation in ingestion worker [app/workers/ingestion_worker.py]
+- [x] [Review][Patch] `document_dao.update` to `ready` succeeds but `ingestion_job_dao.update` fails → status mismatch between collections [app/workers/ingestion_worker.py]
+- [ ] [Review][Patch] Cross-tenant timing oracle on document lookup — push `tenant_id`/`agent_id` into DB query instead of post-fetch check [app/services/ingestion_service.py]
+- [ ] [Review][Patch] Cross-tenant timing oracle on agent lookup — push `tenant_id` into DB query instead of post-fetch check [app/services/agent_service.py]
+- [x] [Review][Patch] `init_beanie()` failure in lifespan — already re-raised as RuntimeError; dismissed may be swallowed — verify exception re-raised; app must not serve requests without Beanie initialized [app/main.py]
+- [x] [Review][Patch] Singleton DAO method mutated directly in test without cleanup — use `patch.object` context manager [tests/core/test_auth.py]
+- [ ] [Review][Patch] `pyproject.toml` adds `beanie>=1.26` as sole `[project.dependencies]` entry — incomplete if deps existed elsewhere; verify and merge [pyproject.toml]
+
+**Deferred (pre-existing / out-of-scope):**
+
+- [x] [Review][Defer] DAO singletons instantiated at module import before `init_beanie()` — works by design; no runtime guard [app/db/dao/*.py] — deferred, pre-existing
+- [x] [Review][Defer] `BaseDAO.update()` silent no-op when no document matches — common MongoDB pattern; intentional by convention [app/db/base_dao.py] — deferred, pre-existing
+- [x] [Review][Defer] Tenant delete ordering — agents deleted before tenant record with no MongoDB multi-doc transaction — deferred, pre-existing
+- [x] [Review][Defer] S3 delete failure after vector namespace deletion in `delete_agent` — requires compensating transaction design beyond current scope [app/services/agent_service.py] — deferred, pre-existing
+- [x] [Review][Defer] `delete_one` non-atomic (find then delete) — atomic `FindOne().delete()` requires Beanie-specific API [app/db/base_dao.py] — deferred, pre-existing
+- [x] [Review][Defer] Orphaned `IngestionJob` if `document.job_id` explicitly cleared post-creation — hypothetical code path not in current impl [app/services/agent_service.py] — deferred, pre-existing

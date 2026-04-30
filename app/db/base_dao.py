@@ -21,7 +21,7 @@ class BaseDAO(Generic[T]):
         cursor = self._model.find(query)
         if sort:
             cursor = cursor.sort(sort)
-        if limit:
+        if limit is not None:
             cursor = cursor.limit(limit)
         return await cursor.to_list()
 
@@ -30,6 +30,8 @@ class BaseDAO(Generic[T]):
         return document
 
     async def update(self, query: dict[str, Any], update_dict: dict[str, Any]) -> None:
+        if not query:
+            raise ValueError("update() requires a non-empty query")
         await self._model.find(query).update({"$set": update_dict})
 
     async def delete_one(self, query: dict[str, Any]) -> None:
@@ -38,6 +40,8 @@ class BaseDAO(Generic[T]):
             await doc.delete()
 
     async def delete_many(self, query: dict[str, Any]) -> None:
+        if not query:
+            raise ValueError("delete_many() requires a non-empty query")
         await self._model.find(query).delete()
 
     async def count(self, query: dict[str, Any]) -> int:

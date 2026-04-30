@@ -191,12 +191,18 @@ async def test_delete_tenant_success_no_agents() -> None:
     with patch.object(tenant_service.tenant_dao, "find_one", AsyncMock(return_value=tenant_doc)), patch.object(
         tenant_service.agent_dao, "find", AsyncMock(return_value=[])
     ), patch.object(tenant_service.agent_dao, "delete_many", AsyncMock()) as delete_agents, patch.object(
+        tenant_service.document_dao, "delete_many", AsyncMock()
+    ) as delete_docs, patch.object(
+        tenant_service.ingestion_job_dao, "delete_many", AsyncMock()
+    ) as delete_jobs, patch.object(
         tenant_service.tenant_dao, "delete_one", AsyncMock()
     ) as delete_tenant_doc:
         await tenant_service.delete_tenant("t1")
 
     delete_tenant_doc.assert_awaited_once_with({"tenant_id": "t1"})
     delete_agents.assert_awaited_once_with({"tenant_id": "t1"})
+    delete_docs.assert_awaited_once_with({"tenant_id": "t1"})
+    delete_jobs.assert_awaited_once_with({"tenant_id": "t1"})
 
 
 @pytest.mark.asyncio
@@ -258,6 +264,10 @@ async def test_delete_tenant_with_agents_calls_delete_namespace() -> None:
     with patch.object(tenant_service.tenant_dao, "find_one", AsyncMock(return_value=tenant_doc)), patch.object(
         tenant_service.agent_dao, "find", AsyncMock(return_value=agent_docs)
     ), patch.object(tenant_service.agent_dao, "delete_many", AsyncMock()), patch.object(
+        tenant_service.document_dao, "delete_many", AsyncMock()
+    ), patch.object(
+        tenant_service.ingestion_job_dao, "delete_many", AsyncMock()
+    ), patch.object(
         tenant_service.tenant_dao, "delete_one", AsyncMock()
     ), patch("app.services.tenant_service.get_vector_store", return_value=mock_vs):
         await tenant_service.delete_tenant("t1")
@@ -279,17 +289,29 @@ async def test_delete_tenant_deletion_order_agents_before_tenant() -> None:
 
     call_order: list[str] = []
 
-    async def tracked_delete_many(_: dict[str, str]) -> None:
+    async def tracked_delete_agents(_: dict[str, str]) -> None:
         call_order.append("delete_many_agents")
+
+    async def tracked_delete_docs(_: dict[str, str]) -> None:
+        call_order.append("delete_many_docs")
+
+    async def tracked_delete_jobs(_: dict[str, str]) -> None:
+        call_order.append("delete_many_jobs")
 
     async def tracked_delete_one(_: dict[str, str]) -> None:
         call_order.append("delete_one_tenant")
 
     with patch.object(tenant_service.tenant_dao, "find_one", AsyncMock(return_value=tenant_doc)), patch.object(
         tenant_service.agent_dao, "find", AsyncMock(return_value=[])
-    ), patch.object(tenant_service.agent_dao, "delete_many", AsyncMock(side_effect=tracked_delete_many)), patch.object(
+    ), patch.object(
+        tenant_service.agent_dao, "delete_many", AsyncMock(side_effect=tracked_delete_agents)
+    ), patch.object(
+        tenant_service.document_dao, "delete_many", AsyncMock(side_effect=tracked_delete_docs)
+    ), patch.object(
+        tenant_service.ingestion_job_dao, "delete_many", AsyncMock(side_effect=tracked_delete_jobs)
+    ), patch.object(
         tenant_service.tenant_dao, "delete_one", AsyncMock(side_effect=tracked_delete_one)
     ):
         await tenant_service.delete_tenant("t1")
 
-    assert call_order == ["delete_many_agents", "delete_one_tenant"]
+    assert call_order == ["delete_many_agents", "delete_many_docs", "delete_many_jobs", "delete_one_tenant"]

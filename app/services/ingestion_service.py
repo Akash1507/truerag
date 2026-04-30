@@ -99,7 +99,7 @@ async def upload_document(
                 job_id=job_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
-                status="queued",
+                status=DocumentStatus.queued,
             )
         )
     except Exception as exc:
@@ -109,7 +109,16 @@ async def upload_document(
             endpoint_url=settings.aws_endpoint_url,
         ) as s3:
             await s3.delete_object(Bucket=settings.s3_document_bucket, Key=s3_key)
-        await document_dao.delete_one({"document_id": document_id})
+        try:
+            await document_dao.delete_one({"document_id": document_id})
+        except Exception as cleanup_exc:
+            logger.error(
+                "compensation_cleanup_failed",
+                extra={
+                    "operation": "upload_document",
+                    "extra_data": {"document_id": document_id, "error": str(cleanup_exc)},
+                },
+            )
         raise IngestionError(f"Failed to create ingestion job: {exc}") from exc
 
     # 4. Enqueue SQS message — failure rolls status to failed on both stores
@@ -251,7 +260,7 @@ async def list_documents(
     if has_more:
         docs = docs[:limit]
 
-    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs[-1].id else None
+    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs and docs[-1].id else None
     items = [
         DocumentListItem(
             document_id=d.document_id,

@@ -31,15 +31,28 @@ async def process_job(
         {"document_id": payload.document_id},
         {"status": DocumentStatus.processing},
     )
-    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": "processing"})
+    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": DocumentStatus.processing})
 
-    await _run_pipeline_stub(payload, aws_session, settings)
+    try:
+        await _run_pipeline_stub(payload, aws_session, settings)
+    except Exception as exc:
+        error_reason = str(exc)
+        await ingestion_job_dao.update(
+            {"job_id": payload.job_id},
+            {"status": DocumentStatus.failed, "error_reason": error_reason},
+        )
+        await document_dao.update(
+            {"document_id": payload.document_id},
+            {"status": DocumentStatus.failed, "error_reason": error_reason},
+        )
+        raise
 
+    # Update job first (canonical status source in get_document_status)
+    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": DocumentStatus.ready})
     await document_dao.update(
         {"document_id": payload.document_id},
         {"status": DocumentStatus.ready},
     )
-    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": "ready"})
 
 
 async def _run_pipeline_stub(

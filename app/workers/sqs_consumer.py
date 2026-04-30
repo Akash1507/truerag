@@ -44,7 +44,8 @@ async def _dispatch(
     aws_session: aioboto3.Session,
     settings: Settings,
 ) -> None:
-    body = json.loads(str(msg["Body"]))
+    raw_body = msg["Body"]
+    body = json.loads(raw_body if isinstance(raw_body, str) else raw_body.decode())
     payload = IngestionJobPayload(
         job_id=body["job_id"],
         tenant_id=body["tenant_id"],
@@ -54,7 +55,7 @@ async def _dispatch(
         file_type=body["file_type"],
         timestamp=body["timestamp"],
     )
-    receive_count = int(msg["Attributes"]["ApproximateReceiveCount"])
+    receive_count = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
 
     try:
         await process_job(payload, aws_session, settings)
@@ -72,12 +73,18 @@ async def _dispatch(
             "permanent ingestion failure — deleting message",
             extra={"extra_data": {"job_id": payload.job_id, "error": str(exc)}},
         )
-        await _update_status(
-            job_id=payload.job_id,
-            document_id=payload.document_id,
-            status="failed",
-            error_reason=str(exc),
-        )
+        try:
+            await _update_status(
+                job_id=payload.job_id,
+                document_id=payload.document_id,
+                status="failed",
+                error_reason=str(exc),
+            )
+        except Exception as status_exc:
+            logger.error(
+                "status_update_failed",
+                extra={"extra_data": {"job_id": payload.job_id, "error": str(status_exc)}},
+            )
         async with aws_session.client(
             "sqs",
             region_name=settings.aws_region,
@@ -99,12 +106,27 @@ async def _dispatch(
             },
         )
         if receive_count >= MAX_RECEIVE_COUNT:
-            await _update_status(
-                job_id=payload.job_id,
-                document_id=payload.document_id,
-                status="failed",
-                error_reason=str(exc),
-            )
+            try:
+                await _update_status(
+                    job_id=payload.job_id,
+                    document_id=payload.document_id,
+                    status="failed",
+                    error_reason=str(exc),
+                )
+            except Exception as status_exc:
+                logger.error(
+                    "status_update_failed",
+                    extra={"extra_data": {"job_id": payload.job_id, "error": str(status_exc)}},
+                )
+            async with aws_session.client(
+                "sqs",
+                region_name=settings.aws_region,
+                endpoint_url=settings.aws_endpoint_url,
+            ) as sqs:
+                await sqs.delete_message(
+                    QueueUrl=settings.sqs_ingestion_queue_url,
+                    ReceiptHandle=msg["ReceiptHandle"],
+                )
 
 
 async def _update_status(
@@ -123,8 +145,25 @@ async def _update_status(
 
 if __name__ == "__main__":
     async def _main() -> None:
+        from beanie import init_beanie
+        from motor.motor_asyncio import AsyncIOMotorClient
+
+        from app.models.agent import AgentDocument
+        from app.models.document import DocumentRecord
+        from app.models.ingestion_job import IngestionJob
+        from app.models.tenant import TenantDocument
+
         settings = get_settings()
-        session = aioboto3.Session()
-        await run_consumer(session, settings)
+        motor_client = AsyncIOMotorClient(settings.mongodb_uri)  # type: ignore[type-arg]
+        try:
+            db = motor_client[settings.mongodb_database]
+            await init_beanie(
+                database=db,
+                document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob],
+            )
+            session = aioboto3.Session()
+            await run_consumer(session, settings)
+        finally:
+            motor_client.close()
 
     asyncio.run(_main())
