@@ -8,10 +8,11 @@ from fastapi import UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import Settings
-from app.core.errors import IngestionError, UnsupportedFileTypeError
-from app.models.document import DocumentUploadResponse
+from app.core.errors import DocumentNotFoundError, ForbiddenError, IngestionError, UnsupportedFileTypeError
+from app.models.document import DocumentListItem, DocumentStatusResponse, DocumentUploadResponse
 from app.services import agent_service
 from app.utils.observability import get_logger
+from app.utils.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
 logger = get_logger(__name__)
 
@@ -186,3 +187,120 @@ async def upload_document(
     return DocumentUploadResponse(
         job_id=job_id, document_id=document_id, status="queued"
     )
+
+
+async def get_document_status(
+    document_id: str,
+    agent_id: str,
+    tenant_id: str,
+    db: AsyncIOMotorDatabase[Any],
+    aws_session: aioboto3.Session,
+    settings: Settings,
+) -> DocumentStatusResponse:
+    doc = await db["documents"].find_one({"document_id": document_id})
+    if doc is None:
+        raise DocumentNotFoundError(f"Document '{document_id}' not found")
+    if doc["tenant_id"] != tenant_id or doc["agent_id"] != agent_id:
+        raise ForbiddenError(f"Document '{document_id}' does not belong to this tenant/agent")
+
+    job_id: str | None = doc.get("job_id")
+    if job_id is None:
+        logger.info(
+            "get_document_status",
+            extra={
+                "operation": "get_document_status",
+                "extra_data": {
+                    "document_id": document_id,
+                    "agent_id": agent_id,
+                    "tenant_id": tenant_id,
+                },
+            },
+        )
+        return DocumentStatusResponse(
+            document_id=document_id,
+            status=doc["status"],
+            error_reason=doc.get("error_reason"),
+        )
+
+    async with aws_session.client(
+        "dynamodb",
+        region_name=settings.aws_region,
+        endpoint_url=settings.aws_endpoint_url,
+    ) as dynamo:
+        response = await dynamo.get_item(
+            TableName=settings.dynamodb_jobs_table,
+            Key={"job_id": {"S": job_id}},
+            ProjectionExpression="#st, error_reason",
+            ExpressionAttributeNames={"#st": "status"},
+        )
+
+    if "Item" not in response:
+        status_val = doc["status"]
+        error_reason: str | None = doc.get("error_reason")
+    else:
+        item = response["Item"]
+        status_attr = item.get("status", {})
+        status_val = status_attr.get("S") or doc["status"]
+        er_attr = item.get("error_reason", {})
+        error_reason = er_attr.get("S") if "S" in er_attr else None
+
+    logger.info(
+        "get_document_status",
+        extra={
+            "operation": "get_document_status",
+            "extra_data": {
+                "document_id": document_id,
+                "agent_id": agent_id,
+                "tenant_id": tenant_id,
+            },
+        },
+    )
+    return DocumentStatusResponse(
+        document_id=document_id,
+        status=status_val,
+        error_reason=error_reason,
+    )
+
+
+async def list_documents(
+    agent_id: str,
+    tenant_id: str,
+    db: AsyncIOMotorDatabase[Any],
+    cursor: str | None = None,
+    limit: int = DEFAULT_PAGE_SIZE,
+) -> tuple[list[DocumentListItem], str | None]:
+    await agent_service.get_agent(agent_id, tenant_id, db)
+
+    query: dict[str, Any] = {"agent_id": agent_id, "tenant_id": tenant_id}
+    if cursor:
+        oid = decode_cursor(cursor)
+        query["_id"] = {"$gt": oid}
+
+    raw_docs: list[dict[str, Any]] = (
+        await db["documents"].find(query).sort("_id", 1).limit(limit + 1).to_list(None)
+    )
+
+    has_more = len(raw_docs) > limit
+    if has_more:
+        raw_docs = raw_docs[:limit]
+
+    next_cursor: str | None = encode_cursor(raw_docs[-1]["_id"]) if has_more else None
+    items = [
+        DocumentListItem(
+            document_id=d["document_id"],
+            filename=d["filename"],
+            file_type=d["file_type"],
+            status=d["status"],
+            created_at=d["created_at"],
+        )
+        for d in raw_docs
+    ]
+
+    logger.debug(
+        "list_documents",
+        extra={
+            "operation": "list_documents",
+            "extra_data": {"count": len(items), "tenant_id": tenant_id, "agent_id": agent_id},
+        },
+    )
+    return items, next_cursor

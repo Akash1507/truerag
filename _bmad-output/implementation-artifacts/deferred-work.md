@@ -1,3 +1,11 @@
+## Deferred from: code review of 3-3-ingestion-status-polling-and-document-listing.md (2026-04-30)
+
+- **403 vs 404 differential leaks document existence to cross-tenant caller** — `get_document_status` returns 403 when doc exists but wrong tenant, 404 when doc absent; leaks document existence. Spec-mandated behavior consistent with agent_service pattern; revisit in a future security hardening pass if tenant isolation needs to be opaque.
+- **No compound MongoDB index `(tenant_id, agent_id, _id)` for cursor pagination** — `list_documents` cursor query `{"agent_id": ..., "tenant_id": ..., "_id": {"$gt": oid}}` will full-scan at scale without a compound index. Add `create_index([("tenant_id", 1), ("agent_id", 1), ("_id", 1)])` when MongoDB index management is formalized.
+- **DynamoDB client opened per-request with no connection reuse** — `async with aws_session.client("dynamodb", ...)` in `get_document_status` creates a new connection per status poll. Established pattern across codebase; refactor when AWS client pooling strategy is addressed globally.
+- **MongoDB document fields accessed via `doc["key"]` without `.get()` guards** — `doc["tenant_id"]`, `doc["agent_id"]`, `doc["status"]`, `doc["file_type"]`, etc. accessed without defensive `.get()` on lines 203, 220, 269–278. Pre-existing invariant that upload_document always sets these fields; add `.get()` guards when schema validation is added to the documents collection.
+- **Cursor tamper protection absent** — a valid ObjectId from another collection can be used as a cursor to seek to an arbitrary position. Pre-existing design decision (no HMAC); harden when cursor-signing is standardized across the API.
+
 ## Deferred from: code review of 2-2-tenant-listing-and-deletion.md (2026-04-23)
 
 - **`VECTOR_STORE_REGISTRY` empty — `delete_tenant` returns 503 for tenants with agents** — intentional by spec (Dev Notes explicitly acknowledge this); registry is populated in Epic 4; no agents exist until Story 2.3 so the path is not exercised yet.

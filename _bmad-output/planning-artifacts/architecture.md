@@ -61,7 +61,7 @@ Architecturally, these group into four subsystems:
 - MongoDB — all tenant and agent config; dynamic at runtime
 - AWS SQS — async ingestion queue
 - AWS S3 — raw document archive
-- AWS DynamoDB — audit log (separate table) + eval results + ingestion job status
+- AWS DynamoDB — audit log only (`truerag-audit-log`); ingestion job status moved to MongoDB
 - AWS ECS Fargate — compute for both API and ingestion worker
 - AWS Secrets Manager — all credentials; read at operation time, not startup
 - Terraform — all infrastructure
@@ -108,10 +108,12 @@ API Backend — AI/ML Infrastructure. Python-only, brownfield project. All techn
 ```
 truerag/
 ├── app/
-│   ├── api/v1/          # FastAPI routers — one module per resource group
+│   ├── api/v1/          # FastAPI routers — HTTP concerns only; no business logic
 │   ├── core/            # Config, auth middleware, rate limiting, dependencies
-│   ├── models/          # Pydantic schemas (request/response) + MongoDB documents
-│   ├── services/        # Business logic — ingestion service, query service, eval service
+│   ├── db/              # DAO layer — BaseDAO + per-collection DAOs; all MongoDB access here
+│   │   └── dao/         # TenantDAO, AgentDAO, DocumentDAO, IngestionJobDAO
+│   ├── models/          # Beanie Documents + Pydantic request/response schemas
+│   ├── services/        # Business logic — uses DAOs; no direct Motor/db access
 │   ├── pipelines/       # Ingestion pipeline + query pipeline orchestration
 │   ├── interfaces/      # Abstract base classes: VectorStore, ChunkingStrategy, Reranker
 │   ├── providers/       # Concrete implementations: pgvector, openai, anthropic, etc.
@@ -188,26 +190,26 @@ truerag/
 |---|---|---|
 | `tenants` | Tenant record, API key hash, rate limit config | `tenant_id`, `api_key_hash`, `rate_limit_rpm`, `created_at` |
 | `agents` | Full agent pipeline config | `agent_id`, `tenant_id`, `name`, `chunking_strategy`, `vector_store`, `embedding_provider`, `llm_provider`, `retrieval_mode`, `top_k`, `reranker`, `semantic_cache_enabled`, `semantic_cache_threshold`, `status`, `created_at`, `updated_at` |
+| `ingestion_jobs` | Async ingestion job status (replaces DynamoDB jobs table) | `job_id`, `document_id`, `tenant_id`, `status`, `error_reason`, `created_at` |
 | `eval_datasets` | Golden Q&A pairs per agent | `agent_id`, `tenant_id`, `questions[]`, `created_at` |
 | `eval_experiments` | Experiment results — config snapshot + RAGAS scores | `agent_id`, `tenant_id`, `config_snapshot`, `ragas_scores`, `baseline_delta`, `triggered_alert`, `created_at` |
 | `semantic_cache` | Cached query vectors + responses, scoped per agent | `agent_id`, `query_vector`, `query_hash`, `response`, `created_at` |
 
-`eval_datasets` and `eval_experiments` remain in MongoDB (config-adjacent, need joint querying with agent context). DynamoDB holds audit log only.
+`eval_datasets` and `eval_experiments` remain in MongoDB (config-adjacent, need joint querying with agent context). DynamoDB holds audit log only. Ingestion job status was moved from DynamoDB to the `ingestion_jobs` MongoDB collection (sprint-change-proposal-2026-04-30).
 
 **D2 — DynamoDB Tables**
 
-Two separate tables — divergent access patterns make single-table design counterproductive:
+One table remains — `truerag-ingestion-jobs` was moved to MongoDB `ingestion_jobs` collection (2026-04-30):
 
 - **`truerag-audit-log`** — partition key: `tenant_id`, sort key: `timestamp#query_hash`
-- **`truerag-ingestion-jobs`** — partition key: `job_id` (polled by job ID directly)
 
 **D3 — Async Driver Stack**
 
 | Store | Driver | Notes |
 |---|---|---|
-| MongoDB | `motor` | Async MongoDB driver; PyMongo-compatible API |
+| MongoDB | `motor` + `beanie` | motor as async driver; Beanie as ODM layer for Document models and DAO operations |
 | PostgreSQL / pgvector | `asyncpg` + `sqlalchemy[asyncio]` | asyncpg for raw performance; SQLAlchemy for query building |
-| AWS (SQS, S3, DynamoDB, Secrets Manager) | `aioboto3` | Async wrapper around boto3 |
+| AWS (SQS, S3, Secrets Manager) | `aioboto3` | Async wrapper around boto3; DynamoDB removed from ingestion path |
 
 Full async stack — no blocking I/O anywhere in either pipeline.
 
@@ -411,6 +413,31 @@ VECTOR_STORE_REGISTRY: dict[str, type[VectorStore]] = {
     "pinecone": PineconeVectorStore,
 }
 ```
+
+**DAO Layer:**
+
+All MongoDB collection access goes through `app/db/`. Services never access raw Motor collections directly.
+
+`BaseDAO[T]` in `app/db/base_dao.py` provides typed collection access using Beanie:
+
+```python
+class BaseDAO(Generic[T]):
+    async def find(self, query: dict, sort: ..., limit: int) -> list[T]
+    async def find_one(self, query: dict) -> T | None
+    async def insert(self, documents: list[T]) -> list[T]
+    async def insert_one(self, document: T) -> T
+    async def update(self, query: dict, update_dict: dict) -> None
+    async def aggregate(self, pipeline: list[dict]) -> list[dict]
+    async def pipeline(self, pipeline: list[dict]) -> list[dict]
+```
+
+Per-collection DAOs in `app/db/dao/`:
+- `TenantDAO(BaseDAO[TenantDocument])`
+- `AgentDAO(BaseDAO[AgentDocument])`
+- `DocumentDAO(BaseDAO[DocumentRecord])`
+- `IngestionJobDAO(BaseDAO[IngestionJob])`
+
+Beanie initialized at startup via `init_beanie(database=db, document_models=[...])`. No `db: AsyncIOMotorDatabase` parameters in service functions.
 
 **Test Location:**
 All tests in `tests/` mirroring `app/` structure exactly:

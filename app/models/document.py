@@ -28,3 +28,22 @@ class DocumentUploadResponse(BaseModel):
     job_id: str
     document_id: str
     status: str = "queued"
+
+
+class DocumentStatusResponse(BaseModel):
+    document_id: str
+    status: DocumentStatus
+    error_reason: str | None = None
+
+
+class DocumentListItem(BaseModel):
+    document_id: str
+    filename: str
+    file_type: str
+    status: DocumentStatus
+    created_at: datetime
+
+
+class DocumentListResponse(BaseModel):
+    items: list[DocumentListItem]
+    next_cursor: str | None = None

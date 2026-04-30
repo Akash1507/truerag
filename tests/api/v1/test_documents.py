@@ -43,11 +43,44 @@ WRONG_TENANT_AGENT_DOC = {
     "tenant_id": "other-tenant-id",
 }
 
+FAKE_DOC_ID = "doc-abc123"
+FAKE_JOB_ID = "job-xyz789"
+FAKE_DOCUMENT_DOC = {
+    "document_id": FAKE_DOC_ID,
+    "tenant_id": FAKE_CALLER["tenant_id"],
+    "agent_id": FAKE_AGENT_DOC["agent_id"],
+    "filename": "report.pdf",
+    "file_type": "pdf",
+    "s3_key": "caller-tenant-id/agent-id/doc-abc123/report.pdf",
+    "job_id": FAKE_JOB_ID,
+    "status": "queued",
+    "error_reason": None,
+    "created_at": datetime.now(UTC),
+    "_id": ObjectId("507f1f77bcf86cd799439012"),
+}
+
+
+def _make_list_doc(oid: ObjectId) -> dict[str, Any]:
+    return {
+        "document_id": str(oid),
+        "tenant_id": FAKE_CALLER["tenant_id"],
+        "agent_id": FAKE_AGENT_DOC["agent_id"],
+        "filename": "doc.pdf",
+        "file_type": "pdf",
+        "s3_key": f"t/{str(oid)}/doc.pdf",
+        "job_id": str(ObjectId()),
+        "status": "ready",
+        "error_reason": None,
+        "created_at": datetime.now(UTC),
+        "_id": oid,
+    }
+
 
 def _make_aws_mock(
     s3_put_side_effect: Exception | None = None,
     sqs_send_side_effect: Exception | None = None,
     dynamo_put_side_effect: Exception | None = None,
+    dynamo_get_item_return: dict | None = None,
 ) -> MagicMock:
     def make_cm(mock_client: AsyncMock) -> MagicMock:
         cm = MagicMock()
@@ -65,6 +98,11 @@ def _make_aws_mock(
     mock_dynamo = AsyncMock()
     mock_dynamo.put_item = AsyncMock(side_effect=dynamo_put_side_effect)
     mock_dynamo.update_item = AsyncMock(return_value={})
+    mock_dynamo.get_item = AsyncMock(
+        return_value=dynamo_get_item_return
+        if dynamo_get_item_return is not None
+        else {"Item": {"status": {"S": "queued"}, "error_reason": {"NULL": True}}}
+    )
 
     def client_factory(service: str, **kwargs: Any) -> MagicMock:
         if service == "s3":
@@ -81,6 +119,8 @@ def _make_aws_mock(
 def _make_app(
     agents_find_one_return: dict | None = FAKE_AGENT_DOC,
     aws_mock: MagicMock | None = None,
+    documents_find_one_return: dict | None = None,
+    documents_find_cursor: list | None = None,
 ) -> FastAPI:
     app = create_app()
 
@@ -93,9 +133,15 @@ def _make_app(
     mock_documents = MagicMock()
     mock_documents.insert_one = AsyncMock(return_value=MagicMock(inserted_id="fake-oid"))
     mock_documents.update_one = AsyncMock(return_value=MagicMock())
-    mock_documents.find_one = AsyncMock(return_value=None)
+    mock_documents.find_one = AsyncMock(return_value=documents_find_one_return)
     mock_documents.delete_one = AsyncMock(return_value=MagicMock())
     mock_documents.delete_many = AsyncMock(return_value=MagicMock())
+
+    mock_cursor = MagicMock()
+    mock_cursor.sort = MagicMock(return_value=mock_cursor)
+    mock_cursor.limit = MagicMock(return_value=mock_cursor)
+    mock_cursor.to_list = AsyncMock(return_value=documents_find_cursor or [])
+    mock_documents.find = MagicMock(return_value=mock_cursor)
 
     def get_collection(name: str) -> MagicMock:
         if name == "agents":
@@ -251,3 +297,196 @@ async def test_upload_document_413_file_too_large() -> None:
         )
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "INGESTION_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# GET /{agent_id}/documents/{document_id}/status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_200_success() -> None:
+    aws_mock = _make_aws_mock(
+        dynamo_get_item_return={
+            "Item": {"status": {"S": "processing"}, "error_reason": {"NULL": True}}
+        }
+    )
+    app = _make_app(aws_mock=aws_mock, documents_find_one_return=FAKE_DOCUMENT_DOC)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_id"] == FAKE_DOC_ID
+    assert body["status"] == "processing"
+    assert body["error_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_403_wrong_tenant() -> None:
+    wrong_tenant_doc = {**FAKE_DOCUMENT_DOC, "tenant_id": "other-tenant-id"}
+    aws_mock = _make_aws_mock()
+    app = _make_app(aws_mock=aws_mock, documents_find_one_return=wrong_tenant_doc)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    dynamo_mock = aws_mock.client("dynamodb").__aenter__.return_value
+    dynamo_mock.get_item.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_403_wrong_agent() -> None:
+    wrong_agent_doc = {**FAKE_DOCUMENT_DOC, "agent_id": "different-agent-id"}
+    app = _make_app(documents_find_one_return=wrong_agent_doc)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_404_not_found() -> None:
+    app = _make_app(documents_find_one_return=None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DOCUMENT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_200_dynamo_item_missing_falls_back_to_mongo() -> None:
+    mongo_doc = {**FAKE_DOCUMENT_DOC, "status": "queued"}
+    aws_mock = _make_aws_mock(dynamo_get_item_return={})
+    app = _make_app(aws_mock=aws_mock, documents_find_one_return=mongo_doc)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert response.json()["error_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_document_status_200_failed_with_error_reason() -> None:
+    aws_mock = _make_aws_mock(
+        dynamo_get_item_return={
+            "Item": {"status": {"S": "failed"}, "error_reason": {"S": "corrupt file"}}
+        }
+    )
+    app = _make_app(aws_mock=aws_mock, documents_find_one_return=FAKE_DOCUMENT_DOC)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents/{FAKE_DOC_ID}/status",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["error_reason"] == "corrupt file"
+
+
+# ---------------------------------------------------------------------------
+# GET /{agent_id}/documents
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_documents_200_empty() -> None:
+    app = _make_app(documents_find_cursor=[])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_documents_200_with_items() -> None:
+    oid1 = ObjectId("507f1f77bcf86cd799439020")
+    oid2 = ObjectId("507f1f77bcf86cd799439021")
+    docs = [_make_list_doc(oid1), _make_list_doc(oid2)]
+    app = _make_app(documents_find_cursor=docs)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 2
+    for item in body["items"]:
+        assert "document_id" in item
+        assert "filename" in item
+        assert "file_type" in item
+        assert "status" in item
+        assert "created_at" in item
+
+
+@pytest.mark.asyncio
+async def test_list_documents_200_pagination_next_cursor() -> None:
+    oids = [ObjectId() for _ in range(3)]
+    docs = [_make_list_doc(oid) for oid in oids]
+    app = _make_app(documents_find_cursor=docs)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents?limit=2",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 2
+    assert body["next_cursor"] is not None
+
+
+@pytest.mark.asyncio
+async def test_list_documents_403_agent_belongs_to_other_tenant() -> None:
+    app = _make_app(agents_find_one_return=WRONG_TENANT_AGENT_DOC)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_list_documents_404_agent_not_found() -> None:
+    app = _make_app(agents_find_one_return=None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "AGENT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_list_documents_400_invalid_cursor() -> None:
+    app = _make_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/v1/agents/{FAKE_AGENT_DOC['agent_id']}/documents?cursor=invalid!!!",
+            headers={"X-API-Key": FAKE_API_KEY},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_CURSOR"

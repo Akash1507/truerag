@@ -20,6 +20,7 @@ class ErrorCode(StrEnum):
     INGESTION_ERROR = "INGESTION_ERROR"
     PERMANENT_INGESTION_ERROR = "PERMANENT_INGESTION_ERROR"
     UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
+    DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -177,5 +178,15 @@ class UnsupportedFileTypeError(TrueRAGError):
         message: str = "Unsupported file type",
         code: ErrorCode = ErrorCode.UNSUPPORTED_FILE_TYPE,
         http_status: int = 400,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class DocumentNotFoundError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Document not found",
+        code: ErrorCode = ErrorCode.DOCUMENT_NOT_FOUND,
+        http_status: int = 404,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
