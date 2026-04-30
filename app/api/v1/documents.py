@@ -22,16 +22,12 @@ async def upload_document_route(
     request: Request,
     caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> DocumentUploadResponse:
-    settings = get_settings()
-    db = request.app.state.motor_client[settings.mongodb_database]
-    aws_session = request.app.state.aws_session
     return await ingestion_service.upload_document(
         file=file,
         agent_id=agent_id,
         tenant_id=caller.tenant_id,
-        db=db,
-        aws_session=aws_session,
-        settings=settings,
+        aws_session=request.app.state.aws_session,
+        settings=get_settings(),
     )
 
 
@@ -42,19 +38,12 @@ async def upload_document_route(
 async def get_document_status_route(
     agent_id: str,
     document_id: str,
-    request: Request,
     caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> DocumentStatusResponse:
-    settings = get_settings()
-    db = request.app.state.motor_client[settings.mongodb_database]
-    aws_session = request.app.state.aws_session
     return await ingestion_service.get_document_status(
         document_id=document_id,
         agent_id=agent_id,
         tenant_id=caller.tenant_id,
-        db=db,
-        aws_session=aws_session,
-        settings=settings,
     )
 
 
@@ -64,18 +53,14 @@ async def get_document_status_route(
 )
 async def list_documents_route(
     agent_id: str,
-    request: Request,
     cursor: str | None = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=100),
     caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> DocumentListResponse:
-    settings = get_settings()
-    db = request.app.state.motor_client[settings.mongodb_database]
     try:
         items, next_cursor = await ingestion_service.list_documents(
             agent_id=agent_id,
             tenant_id=caller.tenant_id,
-            db=db,
             cursor=cursor,
             limit=limit,
         )

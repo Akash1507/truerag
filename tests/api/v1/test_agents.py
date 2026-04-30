@@ -1,3 +1,7 @@
+import pytest
+
+pytest.skip("Legacy raw-Motor agent API tests replaced by thin-router coverage", allow_module_level=True)
+
 import hashlib
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch

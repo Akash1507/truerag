@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
+from beanie import Document
 from pydantic import BaseModel
 
 
@@ -11,7 +12,7 @@ class DocumentStatus(StrEnum):
     failed = "failed"
 
 
-class DocumentRecord(BaseModel):
+class DocumentRecord(Document):
     document_id: str
     agent_id: str
     tenant_id: str
@@ -22,6 +23,9 @@ class DocumentRecord(BaseModel):
     status: DocumentStatus
     error_reason: str | None = None
     created_at: datetime
+
+    class Settings:
+        name = "documents"
 
 
 class DocumentUploadResponse(BaseModel):

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
+from beanie import Document
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 VALID_CHUNKING_STRATEGIES: frozenset[str] = frozenset(
@@ -13,7 +14,7 @@ VALID_RETRIEVAL_MODES: frozenset[str] = frozenset({"dense", "sparse", "hybrid"})
 VALID_RERANKERS: frozenset[str] = frozenset({"none", "cross_encoder", "cohere"})
 
 
-class AgentDocument(BaseModel):
+class AgentDocument(Document):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     agent_id: str
@@ -31,6 +32,9 @@ class AgentDocument(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+    class Settings:
+        name = "agents"
 
 
 AgentName = Annotated[

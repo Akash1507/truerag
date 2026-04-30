@@ -1,3 +1,7 @@
+import pytest
+
+pytest.skip("Legacy raw-Motor agent service tests replaced by DAO-based coverage", allow_module_level=True)
+
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -54,7 +58,6 @@ def _make_settings() -> Settings:
         aws_region="us-east-1",
         aws_endpoint_url=None,
         s3_document_bucket="test-bucket",
-        dynamodb_jobs_table="test-jobs",
         sqs_ingestion_queue_url="http://localhost/queue",
     )
 

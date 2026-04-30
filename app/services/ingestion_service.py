@@ -1,15 +1,22 @@
 import json
 from datetime import UTC, datetime
-from typing import Any
 
 import aioboto3  # type: ignore[import-untyped]
 from bson import ObjectId
 from fastapi import UploadFile
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import Settings
 from app.core.errors import DocumentNotFoundError, ForbiddenError, IngestionError, UnsupportedFileTypeError
-from app.models.document import DocumentListItem, DocumentStatusResponse, DocumentUploadResponse
+from app.db.dao.document_dao import document_dao
+from app.db.dao.ingestion_job_dao import ingestion_job_dao
+from app.models.document import (
+    DocumentListItem,
+    DocumentRecord,
+    DocumentStatus,
+    DocumentStatusResponse,
+    DocumentUploadResponse,
+)
+from app.models.ingestion_job import IngestionJob
 from app.services import agent_service
 from app.utils.observability import get_logger
 from app.utils.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
@@ -24,12 +31,11 @@ async def upload_document(
     file: UploadFile,
     agent_id: str,
     tenant_id: str,
-    db: AsyncIOMotorDatabase[Any],
     aws_session: aioboto3.Session,
     settings: Settings,
 ) -> DocumentUploadResponse:
     # Validate agent ownership — raises AgentNotFoundError (404) or ForbiddenError (403)
-    await agent_service.get_agent(agent_id, tenant_id, db)
+    await agent_service.get_agent(agent_id, tenant_id)
 
     # Validate file type from extension
     filename: str = file.filename or ""
@@ -64,22 +70,20 @@ async def upload_document(
             Body=content,
         )
 
-    # 2. Insert MongoDB document record — compensate S3 on failure
+    document_record = DocumentRecord(
+        document_id=document_id,
+        agent_id=agent_id,
+        tenant_id=tenant_id,
+        filename=filename,
+        file_type=file_ext,
+        s3_key=s3_key,
+        job_id=job_id,
+        status=DocumentStatus.queued,
+        error_reason=None,
+        created_at=now,
+    )
     try:
-        await db["documents"].insert_one(
-            {
-                "document_id": document_id,
-                "agent_id": agent_id,
-                "tenant_id": tenant_id,
-                "filename": filename,
-                "file_type": file_ext,
-                "s3_key": s3_key,
-                "job_id": job_id,
-                "status": "queued",
-                "error_reason": None,
-                "created_at": now,
-            }
-        )
+        await document_dao.insert_one(document_record)
     except Exception as exc:
         async with aws_session.client(
             "s3",
@@ -89,21 +93,15 @@ async def upload_document(
             await s3.delete_object(Bucket=settings.s3_document_bucket, Key=s3_key)
         raise IngestionError(f"Failed to record document: {exc}") from exc
 
-    # 3. Insert DynamoDB job record — compensate S3 + Mongo on failure
     try:
-        async with aws_session.client(
-            "dynamodb",
-            region_name=settings.aws_region,
-            endpoint_url=settings.aws_endpoint_url,
-        ) as dynamo:
-            await dynamo.put_item(
-                TableName=settings.dynamodb_jobs_table,
-                Item={
-                    "job_id": {"S": job_id},
-                    "document_id": {"S": document_id},
-                    "status": {"S": "queued"},
-                },
+        await ingestion_job_dao.insert_one(
+            IngestionJob(
+                job_id=job_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                status="queued",
             )
+        )
     except Exception as exc:
         async with aws_session.client(
             "s3",
@@ -111,7 +109,7 @@ async def upload_document(
             endpoint_url=settings.aws_endpoint_url,
         ) as s3:
             await s3.delete_object(Bucket=settings.s3_document_bucket, Key=s3_key)
-        await db["documents"].delete_one({"document_id": document_id})
+        await document_dao.delete_one({"document_id": document_id})
         raise IngestionError(f"Failed to create ingestion job: {exc}") from exc
 
     # 4. Enqueue SQS message — failure rolls status to failed on both stores
@@ -137,25 +135,14 @@ async def upload_document(
             )
     except Exception as sqs_exc:
         error_reason = str(sqs_exc)
-        await db["documents"].update_one(
+        await document_dao.update(
             {"document_id": document_id},
-            {"$set": {"status": "failed", "error_reason": error_reason}},
+            {"status": DocumentStatus.failed, "error_reason": error_reason},
         )
-        async with aws_session.client(
-            "dynamodb",
-            region_name=settings.aws_region,
-            endpoint_url=settings.aws_endpoint_url,
-        ) as dynamo:
-            await dynamo.update_item(
-                TableName=settings.dynamodb_jobs_table,
-                Key={"job_id": {"S": job_id}},
-                UpdateExpression="SET #st = :st, error_reason = :er",
-                ExpressionAttributeNames={"#st": "status"},
-                ExpressionAttributeValues={
-                    ":st": {"S": "failed"},
-                    ":er": {"S": error_reason},
-                },
-            )
+        await ingestion_job_dao.update(
+            {"job_id": job_id},
+            {"status": "failed", "error_reason": error_reason},
+        )
         logger.error(
             "sqs_enqueue_failed",
             extra={
@@ -193,17 +180,14 @@ async def get_document_status(
     document_id: str,
     agent_id: str,
     tenant_id: str,
-    db: AsyncIOMotorDatabase[Any],
-    aws_session: aioboto3.Session,
-    settings: Settings,
 ) -> DocumentStatusResponse:
-    doc = await db["documents"].find_one({"document_id": document_id})
+    doc = await document_dao.find_one({"document_id": document_id})
     if doc is None:
         raise DocumentNotFoundError(f"Document '{document_id}' not found")
-    if doc["tenant_id"] != tenant_id or doc["agent_id"] != agent_id:
+    if doc.tenant_id != tenant_id or doc.agent_id != agent_id:
         raise ForbiddenError(f"Document '{document_id}' does not belong to this tenant/agent")
 
-    job_id: str | None = doc.get("job_id")
+    job_id = doc.job_id
     if job_id is None:
         logger.info(
             "get_document_status",
@@ -218,31 +202,17 @@ async def get_document_status(
         )
         return DocumentStatusResponse(
             document_id=document_id,
-            status=doc["status"],
-            error_reason=doc.get("error_reason"),
+            status=doc.status,
+            error_reason=doc.error_reason,
         )
 
-    async with aws_session.client(
-        "dynamodb",
-        region_name=settings.aws_region,
-        endpoint_url=settings.aws_endpoint_url,
-    ) as dynamo:
-        response = await dynamo.get_item(
-            TableName=settings.dynamodb_jobs_table,
-            Key={"job_id": {"S": job_id}},
-            ProjectionExpression="#st, error_reason",
-            ExpressionAttributeNames={"#st": "status"},
-        )
-
-    if "Item" not in response:
-        status_val = doc["status"]
-        error_reason: str | None = doc.get("error_reason")
+    job = await ingestion_job_dao.find_one({"job_id": job_id})
+    if job is None:
+        status_val = doc.status
+        error_reason = doc.error_reason
     else:
-        item = response["Item"]
-        status_attr = item.get("status", {})
-        status_val = status_attr.get("S") or doc["status"]
-        er_attr = item.get("error_reason", {})
-        error_reason = er_attr.get("S") if "S" in er_attr else None
+        status_val = job.status
+        error_reason = job.error_reason
 
     logger.info(
         "get_document_status",
@@ -265,35 +235,32 @@ async def get_document_status(
 async def list_documents(
     agent_id: str,
     tenant_id: str,
-    db: AsyncIOMotorDatabase[Any],
     cursor: str | None = None,
     limit: int = DEFAULT_PAGE_SIZE,
 ) -> tuple[list[DocumentListItem], str | None]:
-    await agent_service.get_agent(agent_id, tenant_id, db)
+    await agent_service.get_agent(agent_id, tenant_id)
 
-    query: dict[str, Any] = {"agent_id": agent_id, "tenant_id": tenant_id}
+    query: dict[str, object] = {"agent_id": agent_id, "tenant_id": tenant_id}
     if cursor:
         oid = decode_cursor(cursor)
         query["_id"] = {"$gt": oid}
 
-    raw_docs: list[dict[str, Any]] = (
-        await db["documents"].find(query).sort("_id", 1).limit(limit + 1).to_list(None)
-    )
+    docs = await document_dao.find(query, sort=[("_id", 1)], limit=limit + 1)
 
-    has_more = len(raw_docs) > limit
+    has_more = len(docs) > limit
     if has_more:
-        raw_docs = raw_docs[:limit]
+        docs = docs[:limit]
 
-    next_cursor: str | None = encode_cursor(raw_docs[-1]["_id"]) if has_more else None
+    next_cursor: str | None = encode_cursor(docs[-1].id) if has_more and docs[-1].id else None
     items = [
         DocumentListItem(
-            document_id=d["document_id"],
-            filename=d["filename"],
-            file_type=d["file_type"],
-            status=d["status"],
-            created_at=d["created_at"],
+            document_id=d.document_id,
+            filename=d.filename,
+            file_type=d.file_type,
+            status=d.status,
+            created_at=d.created_at,
         )
-        for d in raw_docs
+        for d in docs
     ]
 
     logger.debug(

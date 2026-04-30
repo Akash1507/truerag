@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Any
 
 import aioboto3  # type: ignore[import-untyped]
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import Settings
+from app.db.dao.document_dao import document_dao
+from app.db.dao.ingestion_job_dao import ingestion_job_dao
+from app.models.document import DocumentStatus
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
@@ -23,45 +24,22 @@ class IngestionJobPayload:
 
 async def process_job(
     payload: IngestionJobPayload,
-    db: AsyncIOMotorDatabase[Any],
     aws_session: aioboto3.Session,
     settings: Settings,
 ) -> None:
-    await db["documents"].update_one(
+    await document_dao.update(
         {"document_id": payload.document_id},
-        {"$set": {"status": "processing"}},
+        {"status": DocumentStatus.processing},
     )
-    async with aws_session.client(
-        "dynamodb",
-        region_name=settings.aws_region,
-        endpoint_url=settings.aws_endpoint_url,
-    ) as dynamo:
-        await dynamo.update_item(
-            TableName=settings.dynamodb_jobs_table,
-            Key={"job_id": {"S": payload.job_id}},
-            UpdateExpression="SET #st = :st",
-            ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues={":st": {"S": "processing"}},
-        )
+    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": "processing"})
 
     await _run_pipeline_stub(payload, aws_session, settings)
 
-    await db["documents"].update_one(
+    await document_dao.update(
         {"document_id": payload.document_id},
-        {"$set": {"status": "ready"}},
+        {"status": DocumentStatus.ready},
     )
-    async with aws_session.client(
-        "dynamodb",
-        region_name=settings.aws_region,
-        endpoint_url=settings.aws_endpoint_url,
-    ) as dynamo:
-        await dynamo.update_item(
-            TableName=settings.dynamodb_jobs_table,
-            Key={"job_id": {"S": payload.job_id}},
-            UpdateExpression="SET #st = :st",
-            ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues={":st": {"S": "ready"}},
-        )
+    await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": "ready"})
 
 
 async def _run_pipeline_stub(

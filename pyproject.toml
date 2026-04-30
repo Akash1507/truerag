@@ -3,6 +3,9 @@ name = "truerag"
 version = "0.1.0"
 description = "TrueRAG — Production-grade open-source RAG Engine"
 requires-python = ">=3.11"
+dependencies = [
+    "beanie>=1.26",
+]
 
 [tool.ruff]
 line-length = 100

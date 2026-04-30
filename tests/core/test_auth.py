@@ -1,6 +1,6 @@
 import hashlib
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -56,14 +56,8 @@ def auth_test_app() -> FastAPI:
 
     mini_app.add_middleware(AuthMiddleware)
     mini_app.add_middleware(RequestIDMiddleware)
-
-    mock_collection = MagicMock()
-    mock_collection.find_one = AsyncMock(return_value=None)
-    mock_db = MagicMock()
-    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-    mock_motor = MagicMock()
-    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
-    mini_app.state.motor_client = mock_motor
+    from app.core import auth as auth_module
+    auth_module.tenant_dao.find_one = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     return mini_app
 
@@ -89,14 +83,10 @@ def auth_test_app_with_tenant() -> FastAPI:
 
     mini_app.add_middleware(AuthMiddleware)
     mini_app.add_middleware(RequestIDMiddleware)
-
-    mock_collection = MagicMock()
-    mock_collection.find_one = AsyncMock(return_value=tenant_doc)
-    mock_db = MagicMock()
-    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-    mock_motor = MagicMock()
-    mock_motor.__getitem__ = MagicMock(return_value=mock_db)
-    mini_app.state.motor_client = mock_motor
+    from app.core import auth as auth_module
+    auth_module.tenant_dao.find_one = AsyncMock(
+        return_value=auth_module.TenantDocument.model_validate(tenant_doc)
+    )  # type: ignore[method-assign]
 
     return mini_app
 

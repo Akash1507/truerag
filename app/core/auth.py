@@ -1,7 +1,5 @@
 import hashlib
-from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -9,6 +7,7 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError, ErrorCode, NamespaceViolationError
+from app.db.dao.tenant_dao import tenant_dao
 from app.models.tenant import TenantDocument
 from app.utils.observability import get_logger
 
@@ -43,7 +42,6 @@ def _auth_error(
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Normalize trailing slash so /v1/health/ matches /v1/health
         path = request.url.path.rstrip("/") or "/"
         if path in SKIP_AUTH_PATHS or (request.method, path) in SKIP_AUTH_METHOD_PATHS:
             return await call_next(request)
@@ -59,13 +57,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _auth_error(401, ErrorCode.UNAUTHORIZED, "Missing X-API-Key header", request_id)
 
         key_hash = _hash_api_key(raw_key)
-        settings = get_settings()
-        motor_client: AsyncIOMotorClient[Any] = request.app.state.motor_client
+        get_settings()
 
         try:
-            tenant_doc: dict[str, Any] | None = await motor_client[settings.mongodb_database][
-                "tenants"
-            ].find_one({"api_key_hash": key_hash})
+            tenant = await tenant_dao.find_one({"api_key_hash": key_hash})
         except Exception:
             logger.error(
                 "auth_db_error",
@@ -78,7 +73,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request_id,
             )
 
-        if tenant_doc is None:
+        if tenant is None:
             logger.warning(
                 "auth_invalid_key",
                 extra={"operation": "authenticate", "extra_data": {"path": request.url.path}},
@@ -86,7 +81,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _auth_error(401, ErrorCode.UNAUTHORIZED, "Invalid API key", request_id)
 
         try:
-            tenant = TenantDocument.model_validate(tenant_doc)
+            validated_tenant = TenantDocument.model_validate(tenant.model_dump())
         except ValidationError:
             logger.error(
                 "auth_tenant_invalid",
@@ -96,12 +91,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 500, ErrorCode.INTERNAL_SERVER_ERROR, "Internal server error", request_id
             )
 
-        request.state.tenant = tenant
+        request.state.tenant = validated_tenant
         logger.info(
             "auth_ok",
             extra={
                 "operation": "authenticate",
-                "extra_data": {"tenant_id": tenant.tenant_id, "path": request.url.path},
+                "extra_data": {
+                    "tenant_id": validated_tenant.tenant_id,
+                    "path": request.url.path,
+                },
             },
         )
         return await call_next(request)

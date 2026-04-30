@@ -44,15 +44,6 @@ async def readiness_check(request: Request) -> JSONResponse:
     except Exception as exc:
         raise ProviderUnavailableError(f"sqs unavailable: {exc}") from exc
 
-    # DynamoDB
-    try:
-        async with request.app.state.aws_session.client(
-            "dynamodb", region_name=settings.aws_region, endpoint_url=settings.aws_endpoint_url
-        ) as dynamodb:
-            await dynamodb.describe_table(TableName=settings.dynamodb_audit_table)
-    except Exception as exc:
-        raise ProviderUnavailableError(f"dynamodb unavailable: {exc}") from exc
-
     # S3
     try:
         async with request.app.state.aws_session.client(
@@ -66,6 +57,4 @@ async def readiness_check(request: Request) -> JSONResponse:
         "readiness_check_ok",
         extra={"operation": "readiness_check", "extra_data": {"result": "ok"}},
     )
-    return JSONResponse(
-        content={"mongodb": "ok", "pgvector": "ok", "sqs": "ok", "dynamodb": "ok", "s3": "ok"}
-    )
+    return JSONResponse(content={"mongodb": "ok", "pgvector": "ok", "sqs": "ok", "s3": "ok"})

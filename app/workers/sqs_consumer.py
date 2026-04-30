@@ -1,11 +1,11 @@
 import asyncio
 import json
-from typing import Any
 
 import aioboto3  # type: ignore[import-untyped]
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import Settings, get_settings
+from app.db.dao.document_dao import document_dao
+from app.db.dao.ingestion_job_dao import ingestion_job_dao
 from app.core.errors import PermanentIngestionError
 from app.utils.observability import get_logger
 from app.workers.ingestion_worker import IngestionJobPayload, process_job
@@ -17,7 +17,6 @@ MAX_RECEIVE_COUNT: int = 3
 
 async def run_consumer(
     aws_session: aioboto3.Session,
-    db: AsyncIOMotorDatabase[Any],
     settings: Settings,
 ) -> None:
     logger.info(
@@ -37,16 +36,15 @@ async def run_consumer(
                 AttributeNames=["ApproximateReceiveCount"],
             )
         for msg in response.get("Messages", []):
-            await _dispatch(msg, aws_session, db, settings)
+            await _dispatch(msg, aws_session, settings)
 
 
 async def _dispatch(
-    msg: dict[str, Any],
+    msg: dict[str, object],
     aws_session: aioboto3.Session,
-    db: AsyncIOMotorDatabase[Any],
     settings: Settings,
 ) -> None:
-    body = json.loads(msg["Body"])
+    body = json.loads(str(msg["Body"]))
     payload = IngestionJobPayload(
         job_id=body["job_id"],
         tenant_id=body["tenant_id"],
@@ -59,7 +57,7 @@ async def _dispatch(
     receive_count = int(msg["Attributes"]["ApproximateReceiveCount"])
 
     try:
-        await process_job(payload, db, aws_session, settings)
+        await process_job(payload, aws_session, settings)
         async with aws_session.client(
             "sqs",
             region_name=settings.aws_region,
@@ -79,9 +77,6 @@ async def _dispatch(
             document_id=payload.document_id,
             status="failed",
             error_reason=str(exc),
-            db=db,
-            aws_session=aws_session,
-            settings=settings,
         )
         async with aws_session.client(
             "sqs",
@@ -109,9 +104,6 @@ async def _dispatch(
                 document_id=payload.document_id,
                 status="failed",
                 error_reason=str(exc),
-                db=db,
-                aws_session=aws_session,
-                settings=settings,
             )
 
 
@@ -120,49 +112,19 @@ async def _update_status(
     document_id: str,
     status: str,
     error_reason: str | None,
-    db: AsyncIOMotorDatabase[Any],
-    aws_session: aioboto3.Session,
-    settings: Settings,
 ) -> None:
-    mongo_update: dict[str, str] = {"status": status}
+    update_dict: dict[str, str] = {"status": status}
     if error_reason is not None:
-        mongo_update["error_reason"] = error_reason
+        update_dict["error_reason"] = error_reason
 
-    await db["documents"].update_one(
-        {"document_id": document_id},
-        {"$set": mongo_update},
-    )
-
-    if error_reason is not None:
-        update_expr = "SET #st = :st, error_reason = :er"
-        expr_values: dict[str, Any] = {":st": {"S": status}, ":er": {"S": error_reason}}
-    else:
-        update_expr = "SET #st = :st"
-        expr_values = {":st": {"S": status}}
-
-    async with aws_session.client(
-        "dynamodb",
-        region_name=settings.aws_region,
-        endpoint_url=settings.aws_endpoint_url,
-    ) as dynamo:
-        await dynamo.update_item(
-            TableName=settings.dynamodb_jobs_table,
-            Key={"job_id": {"S": job_id}},
-            UpdateExpression=update_expr,
-            ExpressionAttributeNames={"#st": "status"},
-            ExpressionAttributeValues=expr_values,
-        )
+    await document_dao.update({"document_id": document_id}, update_dict)
+    await ingestion_job_dao.update({"job_id": job_id}, update_dict)
 
 
 if __name__ == "__main__":
-    from motor.motor_asyncio import AsyncIOMotorClient
-
     async def _main() -> None:
         settings = get_settings()
-        db: AsyncIOMotorDatabase[Any] = AsyncIOMotorClient(settings.mongodb_uri)[
-            settings.mongodb_database
-        ]
         session = aioboto3.Session()
-        await run_consumer(session, db, settings)
+        await run_consumer(session, settings)
 
     asyncio.run(_main())

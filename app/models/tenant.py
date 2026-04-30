@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
+from beanie import Document
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 TenantName = Annotated[
@@ -14,7 +15,7 @@ TenantName = Annotated[
 ]
 
 
-class TenantDocument(BaseModel):
+class TenantDocument(Document):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     tenant_id: str
@@ -22,6 +23,9 @@ class TenantDocument(BaseModel):
     api_key_hash: str
     rate_limit_rpm: int | None = None
     created_at: datetime
+
+    class Settings:
+        name = "tenants"
 
 
 class TenantCreateRequest(BaseModel):

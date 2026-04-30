@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import aioboto3  # type: ignore[import-untyped]
 import asyncpg  # type: ignore[import-untyped]
+from beanie import init_beanie
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -13,6 +14,10 @@ from app.core.errors import TrueRAGError
 from app.core.exception_handlers import generic_exception_handler, truerag_exception_handler
 from app.core.middleware import RequestIDMiddleware
 from app.core.rate_limiter import RateLimiterMiddleware
+from app.models.agent import AgentDocument
+from app.models.document import DocumentRecord
+from app.models.ingestion_job import IngestionJob
+from app.models.tenant import TenantDocument
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +34,11 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         await motor_client.admin.command("ping")
         application.state.motor_client = motor_client
         db = motor_client[settings.mongodb_database]
+        await init_beanie(
+            database=db,
+            document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob],
+        )
+        logger.info("beanie_initialized", extra={"operation": "app_startup"})
         await db["tenants"].create_index([("name", 1)], unique=True)
         logger.info("mongodb_connected", extra={"operation": "app_startup"})
     except Exception as exc:

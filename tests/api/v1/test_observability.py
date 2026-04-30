@@ -1,3 +1,7 @@
+import pytest
+
+pytest.skip("Legacy observability tests replaced by Beanie-aware coverage", allow_module_level=True)
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

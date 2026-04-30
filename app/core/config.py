@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"
     s3_document_bucket: str = "truerag-documents"
     dynamodb_audit_table: str = "truerag-audit-log"
-    dynamodb_jobs_table: str = "truerag-ingestion-jobs"
 
     @field_validator("log_level")
     @classmethod
