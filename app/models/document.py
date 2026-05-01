@@ -74,3 +74,7 @@ class DocumentListItem(BaseModel):
 class DocumentListResponse(BaseModel):
     items: list[DocumentListItem]
     next_cursor: str | None = None
+
+
+class ReindexResponse(BaseModel):
+    enqueued_count: int

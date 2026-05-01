@@ -3,7 +3,12 @@ from fastapi import APIRouter, Depends, Query, Request, UploadFile, status
 from app.core.auth import get_current_tenant
 from app.core.config import get_settings
 from app.core.errors import InvalidCursorError
-from app.models.document import DocumentListResponse, DocumentStatusResponse, DocumentUploadResponse
+from app.models.document import (
+    DocumentListResponse,
+    DocumentStatusResponse,
+    DocumentUploadResponse,
+    ReindexResponse,
+)
 from app.models.tenant import TenantDocument
 from app.services import ingestion_service
 from app.utils.pagination import DEFAULT_PAGE_SIZE
@@ -67,6 +72,24 @@ async def list_documents_route(
     except ValueError as exc:
         raise InvalidCursorError(str(exc)) from exc
     return DocumentListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.post(
+    "/{agent_id}/reindex",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=ReindexResponse,
+)
+async def reindex_agent_route(
+    agent_id: str,
+    request: Request,
+    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+) -> ReindexResponse:
+    return await ingestion_service.reindex_agent(
+        agent_id=agent_id,
+        tenant_id=caller.tenant_id,
+        aws_session=request.app.state.aws_session,
+        settings=get_settings(),
+    )
 
 
 @router.delete(

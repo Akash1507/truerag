@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-02T00:51:12+05:30  # updated: story 4-5 done
+last_updated: 2026-05-02T00:00:00+05:30  # updated: story 5-1 review
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -81,12 +81,12 @@ development_status:
   4-3-pgvector-upsert-with-namespace-isolation: done
   4-4-document-deletion-with-chunk-cleanup: done
   4-5-document-versioning-via-hash-deduplication: done
-  4-6-developer-triggered-full-reindex: backlog
+  4-6-developer-triggered-full-reindex: done
   epic-4-retrospective: optional
 
   # Epic 5: Query, Retrieval & Answer Generation (MVP)
-  epic-5: backlog
-  5-1-query-endpoint-and-pii-scrubbing: backlog
+  epic-5: in-progress
+  5-1-query-endpoint-and-pii-scrubbing: done
   5-2-dense-vector-retrieval-with-metadata-filtering: backlog
   5-3-answer-generation-with-citations-confidence-score-and-structured-output: backlog
   5-4-query-audit-logging: backlog

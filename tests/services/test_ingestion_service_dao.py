@@ -318,7 +318,153 @@ async def test_delete_document_success_orders_cleanup() -> None:
         await ingestion_service.delete_document("doc-1", AGENT_ID, TENANT_ID)
 
     delete_vector.assert_awaited_once_with(f"{TENANT_ID}_{AGENT_ID}", "doc-1")
-    delete_jobs.assert_awaited_once_with({"job_id": "job-1", "tenant_id": TENANT_ID})
+    delete_jobs.assert_awaited_once_with({"document_id": "doc-1", "tenant_id": TENANT_ID})
     delete_doc.assert_awaited_once_with(
         {"document_id": "doc-1", "agent_id": AGENT_ID, "tenant_id": TENANT_ID}
     )
+
+
+@pytest.mark.asyncio
+async def test_reindex_agent_happy_path() -> None:
+    doc1 = _make_document(document_id="doc-1", status=DocumentStatus.ready, archived_at=None)
+    doc2 = _make_document(document_id="doc-2", status=DocumentStatus.ready, archived_at=None)
+    agent = MagicMock(vector_store="pgvector")
+    delete_namespace = AsyncMock()
+    vector_store = MagicMock(delete_namespace=delete_namespace)
+    aws = _make_aws_mock()
+
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch(
+        "app.services.ingestion_service.get_vector_store", return_value=vector_store
+    ), patch("app.services.ingestion_service.semantic_cache.invalidate", AsyncMock()) as invalidate_cache, patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[doc1, doc2])
+    ), patch.object(
+        ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
+    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc:
+        result = await ingestion_service.reindex_agent(
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+
+    assert result.enqueued_count == 2
+    invalidate_cache.assert_awaited_once_with(AGENT_ID)
+    delete_namespace.assert_awaited_once_with(f"{TENANT_ID}_{AGENT_ID}")
+    assert insert_job.await_count == 2
+    assert update_doc.await_count == 2
+    sqs_client = aws.client.side_effect("sqs").__aenter__.return_value
+    assert sqs_client.send_message.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_reindex_agent_empty_agent() -> None:
+    agent = MagicMock(vector_store="pgvector")
+    delete_namespace = AsyncMock()
+    vector_store = MagicMock(delete_namespace=delete_namespace)
+    aws = _make_aws_mock()
+
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch(
+        "app.services.ingestion_service.get_vector_store", return_value=vector_store
+    ), patch("app.services.ingestion_service.semantic_cache.invalidate", AsyncMock()), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[])
+    ), patch.object(
+        ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
+    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc:
+        result = await ingestion_service.reindex_agent(
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+
+    assert result.enqueued_count == 0
+    delete_namespace.assert_awaited_once_with(f"{TENANT_ID}_{AGENT_ID}")
+    insert_job.assert_not_awaited()
+    update_doc.assert_not_awaited()
+    sqs_client = aws.client.side_effect("sqs").__aenter__.return_value
+    sqs_client.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reindex_agent_skips_archived_and_non_ready_docs() -> None:
+    agent = MagicMock(vector_store="pgvector")
+    delete_namespace = AsyncMock()
+    vector_store = MagicMock(delete_namespace=delete_namespace)
+    aws = _make_aws_mock()
+
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch(
+        "app.services.ingestion_service.get_vector_store", return_value=vector_store
+    ), patch("app.services.ingestion_service.semantic_cache.invalidate", AsyncMock()), patch.object(
+        ingestion_service.document_dao,
+        "find",
+        AsyncMock(return_value=[]),
+    ) as find_docs, patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()) as insert_job:
+        result = await ingestion_service.reindex_agent(
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+
+    assert result.enqueued_count == 0
+    assert find_docs.await_args.args[0] == {
+        "tenant_id": TENANT_ID,
+        "agent_id": AGENT_ID,
+        "status": DocumentStatus.ready,
+        "archived_at": None,
+    }
+    insert_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reindex_agent_marks_unsent_documents_failed_on_sqs_error() -> None:
+    doc1 = _make_document(document_id="doc-1", status=DocumentStatus.ready, archived_at=None)
+    doc2 = _make_document(document_id="doc-2", status=DocumentStatus.ready, archived_at=None)
+    agent = MagicMock(vector_store="pgvector")
+    delete_namespace = AsyncMock()
+    vector_store = MagicMock(delete_namespace=delete_namespace)
+    aws = _make_aws_mock(sqs_side_effect=RuntimeError("queue error"))
+
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch(
+        "app.services.ingestion_service.get_vector_store", return_value=vector_store
+    ), patch("app.services.ingestion_service.semantic_cache.invalidate", AsyncMock()), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[doc1, doc2])
+    ), patch.object(
+        ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
+    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc, patch.object(
+        ingestion_service.ingestion_job_dao, "update", AsyncMock()
+    ) as update_job:
+        with pytest.raises(IngestionError):
+            await ingestion_service.reindex_agent(
+                AGENT_ID,
+                TENANT_ID,
+                aws,
+                _make_settings(),
+            )
+
+    assert insert_job.await_count == 2
+    assert update_doc.await_count == 4
+    assert update_job.await_count == 2
+    failure_updates = update_doc.await_args_list[2:]
+    assert all(call.args[1]["status"] == DocumentStatus.failed for call in failure_updates)
+    sqs_client = aws.client.side_effect("sqs").__aenter__.return_value
+    sqs_client.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reindex_agent_forbidden() -> None:
+    aws = _make_aws_mock()
+    forbidden = ForbiddenError("forbidden")
+
+    with patch(
+        "app.services.ingestion_service.agent_service.get_agent", AsyncMock(side_effect=forbidden)
+    ), patch("app.services.ingestion_service.get_vector_store") as get_store:
+        with pytest.raises(ForbiddenError):
+            await ingestion_service.reindex_agent(
+                AGENT_ID,
+                TENANT_ID,
+                aws,
+                _make_settings(),
+            )
+
+    get_store.assert_not_called()

@@ -23,11 +23,13 @@ from app.models.document import (
     DocumentStatus,
     DocumentStatusResponse,
     DocumentUploadResponse,
+    ReindexResponse,
 )
 from app.models.ingestion_job import IngestionJob
 from app.services import agent_service
 from app.utils.observability import get_logger
 from app.utils.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
+from app.utils import semantic_cache
 
 logger = get_logger(__name__)
 
@@ -341,10 +343,7 @@ async def delete_document(
         )
 
     await delete_document_fn(namespace, document_id)
-    if doc.job_id is not None:
-        await ingestion_job_dao.delete_many({"job_id": doc.job_id, "tenant_id": tenant_id})
-    else:
-        await ingestion_job_dao.delete_many({"document_id": document_id, "tenant_id": tenant_id})
+    await ingestion_job_dao.delete_many({"document_id": document_id, "tenant_id": tenant_id})
     await document_dao.delete_one(
         {
             "document_id": document_id,
@@ -364,3 +363,109 @@ async def delete_document(
             },
         },
     )
+
+
+async def reindex_agent(
+    agent_id: str,
+    tenant_id: str,
+    aws_session: aioboto3.Session,
+    settings: Settings,
+) -> ReindexResponse:
+    agent = await agent_service.get_agent(agent_id, tenant_id)
+    namespace = f"{tenant_id}_{agent_id}"
+    now = datetime.now(UTC)
+
+    await semantic_cache.invalidate(agent_id)
+
+    vector_store = get_vector_store(agent.vector_store)
+    await vector_store.delete_namespace(namespace)
+
+    docs = await document_dao.find(
+        {
+            "tenant_id": tenant_id,
+            "agent_id": agent_id,
+            "status": DocumentStatus.ready,
+            "archived_at": None,
+        }
+    )
+    queued_docs: list[tuple[DocumentRecord, str]] = []
+
+    for doc in docs:
+        new_job_id = str(ObjectId())
+        await ingestion_job_dao.insert_one(
+            IngestionJob(
+                job_id=new_job_id,
+                document_id=doc.document_id,
+                tenant_id=tenant_id,
+                status=DocumentStatus.queued,
+            )
+        )
+        await document_dao.update(
+            {"document_id": doc.document_id},
+            {"status": DocumentStatus.queued, "job_id": new_job_id, "error_reason": None},
+        )
+        queued_docs.append((doc, new_job_id))
+
+    try:
+        async with aws_session.client(
+            "sqs",
+            region_name=settings.aws_region,
+            endpoint_url=settings.aws_endpoint_url,
+        ) as sqs:
+            for index, (doc, new_job_id) in enumerate(queued_docs):
+                try:
+                    await sqs.send_message(
+                        QueueUrl=settings.sqs_ingestion_queue_url,
+                        MessageBody=json.dumps(
+                            {
+                                "job_id": new_job_id,
+                                "tenant_id": tenant_id,
+                                "agent_id": agent_id,
+                                "document_id": doc.document_id,
+                                "s3_key": doc.s3_key,
+                                "file_type": doc.file_type,
+                                "timestamp": now.isoformat(),
+                            }
+                        ),
+                    )
+                except Exception as sqs_exc:
+                    failed_docs = queued_docs[index:]
+                    error_reason = str(sqs_exc)
+                    for failed_doc, failed_job_id in failed_docs:
+                        await document_dao.update(
+                            {"document_id": failed_doc.document_id},
+                            {"status": DocumentStatus.failed, "job_id": failed_job_id, "error_reason": error_reason},
+                        )
+                        await ingestion_job_dao.update(
+                            {"job_id": failed_job_id},
+                            {"status": DocumentStatus.failed, "error_reason": error_reason},
+                        )
+                    logger.error(
+                        "reindex_enqueue_failed",
+                        extra={
+                            "operation": "reindex_agent",
+                            "extra_data": {
+                                "tenant_id": tenant_id,
+                                "agent_id": agent_id,
+                                "failed_document_id": doc.document_id,
+                                "failed_count": len(failed_docs),
+                                "error": error_reason,
+                            },
+                        },
+                    )
+                    raise IngestionError(f"SQS enqueue failed during reindex: {sqs_exc}") from sqs_exc
+    except IngestionError:
+        raise
+
+    logger.info(
+        "reindex_complete",
+        extra={
+            "operation": "reindex_agent",
+            "extra_data": {
+                "tenant_id": tenant_id,
+                "agent_id": agent_id,
+                "enqueued_count": len(docs),
+            },
+        },
+    )
+    return ReindexResponse(enqueued_count=len(docs))
