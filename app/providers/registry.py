@@ -4,6 +4,7 @@ from app.interfaces.llm_provider import LLMProvider
 from app.interfaces.reranker import Reranker
 from app.interfaces.vector_store import VectorStore
 from app.providers.chunking.fixed_size import FixedSizeChunker
+from app.providers.embedding.openai import OpenAIEmbedder
 from app.providers.rerankers.passthrough import PassthroughReranker
 
 VECTOR_STORE_REGISTRY: dict[str, type[VectorStore]] = {
@@ -20,7 +21,7 @@ RERANKER_REGISTRY: dict[str, type[Reranker]] = {
 }
 
 EMBEDDING_REGISTRY: dict[str, type[EmbeddingProvider]] = {
-    # Populated in Epic 4: "openai": OpenAIEmbedder, ...
+    "openai": OpenAIEmbedder,
 }
 
 LLM_REGISTRY: dict[str, type[LLMProvider]] = {

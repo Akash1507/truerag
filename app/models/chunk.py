@@ -14,6 +14,7 @@ class ChunkMetadata(BaseModel):
 class Chunk(BaseModel):
     text: str
     metadata: ChunkMetadata
+    vector: list[float] | None = None
 
 
 class VectorRecord(BaseModel):

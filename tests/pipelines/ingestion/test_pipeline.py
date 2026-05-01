@@ -74,7 +74,11 @@ async def test_pipeline_calls_scrub_pii_with_extracted_text() -> None:
             return_value=[_make_chunk()],
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):
@@ -103,7 +107,11 @@ async def test_scrubbed_text_passed_to_chunk_text() -> None:
             return_value=[_make_chunk()],
         ) as mock_chunk,
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):
@@ -129,7 +137,11 @@ async def test_provider_unavailable_propagates() -> None:
             return_value=[],
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):
@@ -156,7 +168,11 @@ async def test_log_includes_required_fields_and_no_text_content() -> None:
             return_value=[_make_chunk()],
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
         patch("app.pipelines.ingestion.pipeline.logger") as mock_logger,
@@ -215,7 +231,11 @@ async def test_pipeline_calls_parse_document() -> None:
             return_value=[_make_chunk()],
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):
@@ -250,7 +270,11 @@ async def test_pipeline_calls_chunker_via_registry() -> None:
             {"fixed_size": mock_chunker_cls},
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):
@@ -272,7 +296,11 @@ async def test_parse_error_propagates() -> None:
             side_effect=ParseError("PDF parse failed"),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._embed_upsert_stub",
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
             AsyncMock(return_value=None),
         ),
     ):

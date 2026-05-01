@@ -9,7 +9,7 @@ from app.models.agent import AgentDocument
 from app.models.chunk import Chunk, ChunkMetadata
 from app.models.ingestion_job import IngestionJobPayload
 from app.pipelines.ingestion.parser import parse_document
-from app.providers.registry import CHUNKING_REGISTRY
+from app.providers.registry import CHUNKING_REGISTRY, EMBEDDING_REGISTRY
 from app.utils.observability import get_logger
 from app.utils.pii import scrub_pii
 
@@ -26,7 +26,8 @@ async def run_ingestion_pipeline(
     raw_text = parse_document(content, payload.file_type)
     scrubbed_text = _scrub_with_logging(raw_text, payload)
     chunks = _chunk_text(scrubbed_text, payload, agent)
-    await _embed_upsert_stub(chunks, payload)
+    await _generate_embeddings(chunks, agent, aws_session)
+    await _upsert_to_vector_store_stub(chunks, payload)
 
 
 async def _download_from_s3(
@@ -65,7 +66,9 @@ def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:
 def _chunk_text(
     text: str, payload: IngestionJobPayload, agent: AgentDocument
 ) -> list[Chunk]:
-    chunker_cls = CHUNKING_REGISTRY[agent.chunking_strategy]
+    chunker_cls = CHUNKING_REGISTRY.get(agent.chunking_strategy)
+    if not chunker_cls:
+        raise ValueError(f"Chunking strategy '{agent.chunking_strategy}' is not registered.")
     chunker = chunker_cls(chunk_size=agent.chunk_size, chunk_overlap=agent.chunk_overlap)
     metadata = ChunkMetadata(
         tenant_id=payload.tenant_id,
@@ -97,9 +100,46 @@ def _chunk_text(
     return chunks
 
 
-async def _embed_upsert_stub(chunks: list[Chunk], payload: IngestionJobPayload) -> None:
+async def _generate_embeddings(
+    chunks: list[Chunk], agent: AgentDocument, aws_session: aioboto3.Session
+) -> None:
+    embedder_cls = EMBEDDING_REGISTRY.get(agent.embedding_provider)
+    if not embedder_cls:
+        raise ValueError(f"Embedding provider '{agent.embedding_provider}' is not registered.")
+    embedder = embedder_cls(aws_session=aws_session)
+
+    texts = [c.text for c in chunks]
+    vectors = []
+    
+    batch_size = 2000
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i : i + batch_size]
+        batch_vectors = await embedder.embed(batch_texts)
+        vectors.extend(batch_vectors)
+
+    for chunk, vector in zip(chunks, vectors, strict=True):
+        chunk.vector = vector
+
     logger.info(
-        "embedding_not_yet_implemented",
+        "embedding_complete",
+        extra={
+            "operation": "embedding",
+            "extra_data": {
+                "tenant_id": chunks[0].metadata.tenant_id if chunks else None,
+                "agent_id": agent.id,
+                "provider": agent.embedding_provider,
+                "chunk_count": len(chunks),
+                "vector_dim": len(vectors[0]) if vectors else 0,
+            },
+        },
+    )
+
+
+async def _upsert_to_vector_store_stub(
+    chunks: list[Chunk], payload: IngestionJobPayload
+) -> None:
+    logger.info(
+        "upsert_not_yet_implemented",
         extra={
             "extra_data": {
                 "tenant_id": payload.tenant_id,
@@ -107,6 +147,8 @@ async def _embed_upsert_stub(chunks: list[Chunk], payload: IngestionJobPayload) 
                 "job_id": payload.job_id,
                 "document_id": payload.document_id,
                 "chunk_count": len(chunks),
+                "vector_dim": len(chunks[0].vector) if chunks and chunks[0].vector else 0,
             }
         },
     )
+
