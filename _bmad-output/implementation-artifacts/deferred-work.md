@@ -1,3 +1,18 @@
+## Deferred from: code review of 4-1-document-parsing-and-fixed-size-chunking.md (2026-05-01)
+
+- **DOCX table/header/footer content silently dropped** (`parser.py:36-40`) — `doc.paragraphs` does not iterate tables, headers, or footers; significant DOCX content can be missing without error. Extend DOCX extraction to include table cell text when DOCX parsing is hardened.
+- **`KeyError` from unknown `chunking_strategy` causes indefinite SQS retry** (`pipeline.py:67`) — spec explicitly allows this; a permanently-absent strategy will retry until DLQ. Consider `PermanentIngestionError` for unregistered strategies if this causes operational issues.
+- **`process_job` marks `processing` before agent check** (`ingestion_worker.py:21-27`) — pre-existing; if initial DAO update fails, document stuck in `queued`. Wrap pre-pipeline status updates in the same try/except when `process_job` error handling is revisited (also noted in 3-4 review).
+- **No explicit cross-tenant assertion after `agent_dao.find_one`** (`ingestion_worker.py:30-31`) — relies entirely on DAO query predicate; add explicit `assert agent.tenant_id == payload.tenant_id` as defense-in-depth when DAO security hardening is done.
+- **No max document size guard before parsing** (`parser.py:9`) — large S3 objects fully buffered into memory; OOM risk under concurrency (also noted in 3-4 review as `ContentLength` guard).
+- **Pre-try DAO calls in `process_job` can raise unhandled exceptions** (`ingestion_worker.py:21-27`) — pre-existing; document stuck in prior state if initial status write fails (also noted in 3-4 review).
+- **Status split risk on final ready update** (`ingestion_worker.py:59-64`) — `ingestion_job_dao.update(ready)` success then `document_dao.update(ready)` failure leaves collections inconsistent; wrap in try/except when `process_job` error handling is revisited.
+- **DAO call in `except` block can suppress original exception** (`ingestion_worker.py:47-57`) — if failure-status DAO update throws, original exception lost from logs; nest inner try/except around DAO calls in error handler.
+- **Null bytes in TXT files silently decoded** (`parser.py:22`) — `content.decode("utf-8")` succeeds with null bytes; may corrupt downstream tokenizer. Strip null bytes or raise `ParseError` when text pre-processing is standardized.
+- **Encrypted/scanned PDF produces opaque `ParseError`** (`parser.py:28-33`) — AC1 satisfied but encrypted PDFs and scanned PDFs are indistinguishable; add specific detection when PDF parsing is hardened.
+- **`_chunk_text` uses hardcoded `chunk_size`/`chunk_overlap` kwargs** (`pipeline.py:68`) — future chunking strategies with different init params will `TypeError`; define a factory interface when the second strategy is added.
+- **`chunk_size=0` bypass via direct `FixedSizeChunker` instantiation** (`fixed_size.py:8`) — Pydantic guards protect production path; add defensive `chunk_size > 0` in `__init__` when `ChunkingStrategy` base class is hardened.
+
 ## Deferred from: code review of 3-4-pii-scrubbing-at-ingestion.md (2026-05-01)
 
 - **S3 object fully buffered with no size guard** (`pipeline.py:35`) — `response["Body"].read()` loads the entire S3 object into memory; a large file will OOM the worker. Add `ContentLength` check or streaming with a ceiling when a max-file-size config is defined.
@@ -84,3 +99,10 @@
 ## Deferred from: code review of 1-2-core-configuration-and-structured-logging.md (2026-04-18)
 
 - Clarify which settings are required for startup validation — AC1 and Task 5.1 require a missing required setting to raise a startup `ValidationError`, but `Settings` currently gives every field a default in `app/core/config.py`, `get_settings()` can never fail for missing env, and `tests/core/test_config.py` codifies that behavior with `test_missing_field_uses_default`. The story’s own sample `Settings` class also assigns defaults to every field, so the intended required field set is ambiguous. Reason: i will review it later.
+- **No test exercises real corrupt PDF/DOCX bytes** (`test_parser.py`) — error paths mocked; only TXT corrupt-bytes tested with real code.
+- **`agent_dao.find_one` DB timeout → DAO calls in `except` block can suppress original exception** (`ingestion_worker.py:29-57`) — pre-existing pattern.
+- **Status split on final ready update** (`ingestion_worker.py:59-64`) — pre-existing inconsistency.
+- **DOCX table/header/footer content silently dropped** (`parser.py:36-40`) — beyond story scope.
+- **`KeyError` from unknown `chunking_strategy` causes indefinite SQS retry** (`pipeline.py:67`) — spec-mandated.
+- **No max document size guard before parsing** (`parser.py:9`) — large S3 objects fully buffered; noted in prior 3-4 review.
+- **`_chunk_text` uses hardcoded `chunk_size`/`chunk_overlap` kwargs** (`pipeline.py:68`) — future strategies with different init params will `TypeError`; defer until second strategy added.

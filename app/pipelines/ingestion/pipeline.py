@@ -1,9 +1,15 @@
 import time
+from datetime import UTC, datetime
 
 import aioboto3  # type: ignore[import-untyped]
 
 from app.core.config import Settings
+from app.core.errors import PermanentIngestionError
+from app.models.agent import AgentDocument
+from app.models.chunk import Chunk, ChunkMetadata
 from app.models.ingestion_job import IngestionJobPayload
+from app.pipelines.ingestion.parser import parse_document
+from app.providers.registry import CHUNKING_REGISTRY
 from app.utils.observability import get_logger
 from app.utils.pii import scrub_pii
 
@@ -14,11 +20,13 @@ async def run_ingestion_pipeline(
     payload: IngestionJobPayload,
     aws_session: aioboto3.Session,
     settings: Settings,
+    agent: AgentDocument,
 ) -> None:
     content = await _download_from_s3(payload, aws_session, settings)
-    raw_text = _extract_text(content, payload.file_type)
+    raw_text = parse_document(content, payload.file_type)
     scrubbed_text = _scrub_with_logging(raw_text, payload)
-    await _chunk_embed_upsert_stub(scrubbed_text, payload)
+    chunks = _chunk_text(scrubbed_text, payload, agent)
+    await _embed_upsert_stub(chunks, payload)
 
 
 async def _download_from_s3(
@@ -33,11 +41,6 @@ async def _download_from_s3(
     ) as s3:
         response = await s3.get_object(Bucket=settings.s3_document_bucket, Key=payload.s3_key)
         return await response["Body"].read()
-
-
-def _extract_text(content: bytes, file_type: str) -> str:
-    # txt/md: exact UTF-8; pdf/docx: best-effort stub (Epic 4 replaces with real parsers)
-    return content.decode("utf-8", errors="replace")
 
 
 def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:
@@ -59,14 +62,51 @@ def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:
     return scrubbed
 
 
-async def _chunk_embed_upsert_stub(scrubbed_text: str, payload: IngestionJobPayload) -> None:
+def _chunk_text(
+    text: str, payload: IngestionJobPayload, agent: AgentDocument
+) -> list[Chunk]:
+    chunker_cls = CHUNKING_REGISTRY[agent.chunking_strategy]
+    chunker = chunker_cls(chunk_size=agent.chunk_size, chunk_overlap=agent.chunk_overlap)
+    metadata = ChunkMetadata(
+        tenant_id=payload.tenant_id,
+        agent_id=payload.agent_id,
+        document_id=payload.document_id,
+        chunk_index=0,
+        chunking_strategy=agent.chunking_strategy,
+        timestamp=datetime.now(UTC),
+        version=1,
+    )
+    chunks = chunker.chunk(text, metadata)
+    if not chunks:
+        raise PermanentIngestionError("Document produced zero chunks after parsing")
     logger.info(
-        "chunking_not_yet_implemented",
+        "chunking_complete",
+        extra={
+            "operation": "chunking",
+            "extra_data": {
+                "tenant_id": payload.tenant_id,
+                "agent_id": payload.agent_id,
+                "document_id": payload.document_id,
+                "chunk_count": len(chunks),
+                "chunking_strategy": agent.chunking_strategy,
+                "chunk_size": agent.chunk_size,
+                "chunk_overlap": agent.chunk_overlap,
+            },
+        },
+    )
+    return chunks
+
+
+async def _embed_upsert_stub(chunks: list[Chunk], payload: IngestionJobPayload) -> None:
+    logger.info(
+        "embedding_not_yet_implemented",
         extra={
             "extra_data": {
+                "tenant_id": payload.tenant_id,
+                "agent_id": payload.agent_id,
                 "job_id": payload.job_id,
                 "document_id": payload.document_id,
-                "tenant_id": payload.tenant_id,
+                "chunk_count": len(chunks),
             }
         },
     )

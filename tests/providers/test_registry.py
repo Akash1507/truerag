@@ -1,3 +1,4 @@
+from app.providers.chunking.fixed_size import FixedSizeChunker
 from app.providers.registry import (
     CHUNKING_REGISTRY,
     EMBEDDING_REGISTRY,
@@ -29,9 +30,14 @@ def test_none_key_returns_passthrough_instance() -> None:
 def test_empty_registries_are_dicts() -> None:
     """Registries not yet populated should be empty dicts, not None or missing."""
     assert VECTOR_STORE_REGISTRY == {}
-    assert CHUNKING_REGISTRY == {}
     assert EMBEDDING_REGISTRY == {}
     assert LLM_REGISTRY == {}
+
+
+def test_chunking_registry_has_fixed_size() -> None:
+    """fixed_size registered in Story 4.1."""
+    assert "fixed_size" in CHUNKING_REGISTRY
+    assert CHUNKING_REGISTRY["fixed_size"] is FixedSizeChunker
 
 
 def test_reranker_registry_has_exactly_one_entry() -> None:

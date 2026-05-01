@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from beanie import Document
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 VALID_CHUNKING_STRATEGIES: frozenset[str] = frozenset(
     {"fixed_size", "semantic", "hierarchical", "document_aware"}
@@ -21,6 +21,8 @@ class AgentDocument(Document):
     tenant_id: str
     name: str
     chunking_strategy: str
+    chunk_size: int = Field(default=512, ge=64, le=8192)
+    chunk_overlap: int = Field(default=50, ge=0, le=512)
     vector_store: str
     embedding_provider: str
     llm_provider: str
@@ -35,6 +37,12 @@ class AgentDocument(Document):
 
     class Settings:
         name = "agents"
+
+    @model_validator(mode="after")
+    def validate_chunk_overlap(self) -> "AgentDocument":
+        if self.chunk_overlap > self.chunk_size // 2:
+            raise ValueError("chunk_overlap must be <= chunk_size // 2")
+        return self
 
 
 AgentName = Annotated[
@@ -51,6 +59,8 @@ AgentName = Annotated[
 class AgentCreateRequest(BaseModel):
     name: AgentName
     chunking_strategy: str
+    chunk_size: int = Field(default=512, ge=64, le=8192)
+    chunk_overlap: int = Field(default=50, ge=0, le=512)
     vector_store: str
     embedding_provider: str
     llm_provider: str
@@ -61,12 +71,20 @@ class AgentCreateRequest(BaseModel):
     semantic_cache_enabled: bool = False
     semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
+    @model_validator(mode="after")
+    def validate_chunk_overlap(self) -> "AgentCreateRequest":
+        if self.chunk_overlap > self.chunk_size // 2:
+            raise ValueError("chunk_overlap must be <= chunk_size // 2")
+        return self
+
 
 class AgentCreateResponse(BaseModel):
     agent_id: str
     tenant_id: str
     name: str
     chunking_strategy: str
+    chunk_size: int
+    chunk_overlap: int
     vector_store: str
     embedding_provider: str
     llm_provider: str
@@ -84,6 +102,8 @@ class AgentConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     chunking_strategy: str | None = None
+    chunk_size: int | None = Field(default=None, ge=64, le=8192)
+    chunk_overlap: int | None = Field(default=None, ge=0, le=512)
     vector_store: str | None = None
     embedding_provider: str | None = None
     llm_provider: str | None = None
@@ -92,6 +112,13 @@ class AgentConfigUpdateRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=100)
     semantic_cache_enabled: bool | None = None
     semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_chunk_overlap(self) -> "AgentConfigUpdateRequest":
+        if self.chunk_overlap is not None and self.chunk_size is not None:
+            if self.chunk_overlap > self.chunk_size // 2:
+                raise ValueError("chunk_overlap must be <= chunk_size // 2")
+        return self
 
 
 class AgentListResponse(BaseModel):
@@ -104,6 +131,8 @@ class AgentUpdateResponse(BaseModel):
     tenant_id: str
     name: str
     chunking_strategy: str
+    chunk_size: int
+    chunk_overlap: int
     vector_store: str
     embedding_provider: str
     llm_provider: str

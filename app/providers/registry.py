@@ -3,6 +3,7 @@ from app.interfaces.embedding_provider import EmbeddingProvider
 from app.interfaces.llm_provider import LLMProvider
 from app.interfaces.reranker import Reranker
 from app.interfaces.vector_store import VectorStore
+from app.providers.chunking.fixed_size import FixedSizeChunker
 from app.providers.rerankers.passthrough import PassthroughReranker
 
 VECTOR_STORE_REGISTRY: dict[str, type[VectorStore]] = {
@@ -10,7 +11,7 @@ VECTOR_STORE_REGISTRY: dict[str, type[VectorStore]] = {
 }
 
 CHUNKING_REGISTRY: dict[str, type[ChunkingStrategy]] = {
-    # Populated in Epic 4: "fixed_size": FixedSizeChunker, ...
+    "fixed_size": FixedSizeChunker,
 }
 
 RERANKER_REGISTRY: dict[str, type[Reranker]] = {

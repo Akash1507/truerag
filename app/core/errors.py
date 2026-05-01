@@ -18,6 +18,7 @@ class ErrorCode(StrEnum):
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     INGESTION_ERROR = "INGESTION_ERROR"
+    PARSE_ERROR = "PARSE_ERROR"
     PERMANENT_INGESTION_ERROR = "PERMANENT_INGESTION_ERROR"
     UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
     DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
@@ -168,6 +169,16 @@ class PermanentIngestionError(TrueRAGError):
         message: str = "Permanent ingestion failure — document cannot be retried",
         code: ErrorCode = ErrorCode.PERMANENT_INGESTION_ERROR,
         http_status: int = 500,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class ParseError(PermanentIngestionError):
+    def __init__(
+        self,
+        message: str = "Parse failed",
+        code: ErrorCode = ErrorCode.PARSE_ERROR,
+        http_status: int = 400,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
 
