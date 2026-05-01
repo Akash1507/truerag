@@ -5,8 +5,15 @@ import aioboto3  # type: ignore[import-untyped]
 from bson import ObjectId
 from fastapi import UploadFile
 
+from app.core.dependencies import get_vector_store
 from app.core.config import Settings
-from app.core.errors import DocumentNotFoundError, ForbiddenError, IngestionError, UnsupportedFileTypeError
+from app.core.errors import (
+    DocumentNotFoundError,
+    ForbiddenError,
+    IngestionError,
+    ProviderUnavailableError,
+    UnsupportedFileTypeError,
+)
 from app.db.dao.document_dao import document_dao
 from app.db.dao.ingestion_job_dao import ingestion_job_dao
 from app.models.document import (
@@ -280,3 +287,50 @@ async def list_documents(
         },
     )
     return items, next_cursor
+
+
+async def delete_document(
+    document_id: str,
+    agent_id: str,
+    tenant_id: str,
+) -> None:
+    agent = await agent_service.get_agent(agent_id, tenant_id)
+
+    doc = await document_dao.find_one({"document_id": document_id})
+    if doc is None:
+        raise DocumentNotFoundError(f"Document '{document_id}' not found")
+    if doc.tenant_id != tenant_id or doc.agent_id != agent_id:
+        raise ForbiddenError(f"Document '{document_id}' does not belong to this tenant/agent")
+
+    namespace = f"{tenant_id}_{agent_id}"
+    vector_store = get_vector_store(agent.vector_store)
+    delete_document_fn = getattr(vector_store, "delete_document", None)
+    if not callable(delete_document_fn):
+        raise ProviderUnavailableError(
+            f"Vector store '{agent.vector_store}' does not support document-scoped deletion"
+        )
+
+    await delete_document_fn(namespace, document_id)
+    if doc.job_id is not None:
+        await ingestion_job_dao.delete_many({"job_id": doc.job_id, "tenant_id": tenant_id})
+    else:
+        await ingestion_job_dao.delete_many({"document_id": document_id, "tenant_id": tenant_id})
+    await document_dao.delete_one(
+        {
+            "document_id": document_id,
+            "agent_id": agent_id,
+            "tenant_id": tenant_id,
+        }
+    )
+
+    logger.info(
+        "document_deleted",
+        extra={
+            "operation": "delete_document",
+            "extra_data": {
+                "document_id": document_id,
+                "agent_id": agent_id,
+                "tenant_id": tenant_id,
+            },
+        },
+    )

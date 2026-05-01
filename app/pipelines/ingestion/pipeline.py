@@ -6,7 +6,8 @@ import aioboto3  # type: ignore[import-untyped]
 from app.core.config import Settings
 from app.core.errors import PermanentIngestionError
 from app.models.agent import AgentDocument
-from app.models.chunk import Chunk, ChunkMetadata
+from app.core.dependencies import get_vector_store
+from app.models.chunk import Chunk, ChunkMetadata, VectorRecord
 from app.models.ingestion_job import IngestionJobPayload
 from app.pipelines.ingestion.parser import parse_document
 from app.providers.registry import CHUNKING_REGISTRY, EMBEDDING_REGISTRY
@@ -27,7 +28,7 @@ async def run_ingestion_pipeline(
     scrubbed_text = _scrub_with_logging(raw_text, payload)
     chunks = _chunk_text(scrubbed_text, payload, agent)
     await _generate_embeddings(chunks, agent, aws_session)
-    await _upsert_to_vector_store_stub(chunks, payload)
+    await _upsert_to_vector_store(chunks, payload, agent)
 
 
 async def _download_from_s3(
@@ -135,12 +136,30 @@ async def _generate_embeddings(
     )
 
 
-async def _upsert_to_vector_store_stub(
-    chunks: list[Chunk], payload: IngestionJobPayload
+async def _upsert_to_vector_store(
+    chunks: list[Chunk], payload: IngestionJobPayload, agent: AgentDocument
 ) -> None:
+    namespace = f"{payload.tenant_id}_{payload.agent_id}"
+    vector_store = get_vector_store(agent.vector_store)
+    vector_records: list[VectorRecord] = []
+    for chunk in chunks:
+        if chunk.vector is None:
+            raise PermanentIngestionError(
+                f"Missing embedding vector for chunk {chunk.metadata.chunk_index}"
+            )
+        vector_records.append(
+            VectorRecord(
+                id=f"{chunk.metadata.document_id}_{chunk.metadata.chunk_index}",
+                vector=chunk.vector,
+                metadata=chunk.metadata,
+                text=chunk.text,
+            )
+        )
+    await vector_store.upsert(namespace=namespace, vectors=vector_records)
     logger.info(
-        "upsert_not_yet_implemented",
+        "vector_upsert_complete",
         extra={
+            "operation": "vector_upsert",
             "extra_data": {
                 "tenant_id": payload.tenant_id,
                 "agent_id": payload.agent_id,
@@ -148,7 +167,7 @@ async def _upsert_to_vector_store_stub(
                 "document_id": payload.document_id,
                 "chunk_count": len(chunks),
                 "vector_dim": len(chunks[0].vector) if chunks and chunks[0].vector else 0,
+                "provider": agent.vector_store,
             }
         },
     )
-

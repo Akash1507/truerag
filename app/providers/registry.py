@@ -6,9 +6,10 @@ from app.interfaces.vector_store import VectorStore
 from app.providers.chunking.fixed_size import FixedSizeChunker
 from app.providers.embedding.openai import OpenAIEmbedder
 from app.providers.rerankers.passthrough import PassthroughReranker
+from app.providers.vector_stores.pgvector import PgVectorStore
 
 VECTOR_STORE_REGISTRY: dict[str, type[VectorStore]] = {
-    # Populated in later epics: "pgvector": PgVectorStore, "qdrant": ..., "pinecone": ...
+    "pgvector": PgVectorStore,
 }
 
 CHUNKING_REGISTRY: dict[str, type[ChunkingStrategy]] = {

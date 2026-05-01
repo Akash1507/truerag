@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-01T17:23:12Z  # updated: story 4-2 done
+last_updated: 2026-05-02T00:38:00+05:30  # updated: story 4-4 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -78,8 +78,8 @@ development_status:
   epic-4: in-progress
   4-1-document-parsing-and-fixed-size-chunking: done
   4-2-openai-embedding-generation: done
-  4-3-pgvector-upsert-with-namespace-isolation: backlog
-  4-4-document-deletion-with-chunk-cleanup: backlog
+  4-3-pgvector-upsert-with-namespace-isolation: done
+  4-4-document-deletion-with-chunk-cleanup: done
   4-5-document-versioning-via-hash-deduplication: backlog
   4-6-developer-triggered-full-reindex: backlog
   epic-4-retrospective: optional

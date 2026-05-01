@@ -38,6 +38,9 @@ def _make_agent() -> AgentDocument:
     agent.chunking_strategy = "fixed_size"
     agent.chunk_size = 512
     agent.chunk_overlap = 50
+    agent.vector_store = "pgvector"
+    agent.embedding_provider = "openai"
+    agent.id = "agent-456"
     agent.tenant_id = "tenant-123"
     agent.agent_id = "agent-456"
     return agent
@@ -78,7 +81,7 @@ async def test_pipeline_calls_scrub_pii_with_extracted_text() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
@@ -111,7 +114,7 @@ async def test_scrubbed_text_passed_to_chunk_text() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
@@ -141,7 +144,7 @@ async def test_provider_unavailable_propagates() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
@@ -172,7 +175,7 @@ async def test_log_includes_required_fields_and_no_text_content() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
         patch("app.pipelines.ingestion.pipeline.logger") as mock_logger,
@@ -235,7 +238,7 @@ async def test_pipeline_calls_parse_document() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
@@ -274,7 +277,7 @@ async def test_pipeline_calls_chunker_via_registry() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
@@ -300,9 +303,43 @@ async def test_parse_error_propagates() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "app.pipelines.ingestion.pipeline._upsert_to_vector_store_stub",
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
             AsyncMock(return_value=None),
         ),
     ):
         with pytest.raises(ParseError):
             await run_ingestion_pipeline(_make_payload(), AsyncMock(), _make_settings(), _make_agent())
+
+
+@pytest.mark.asyncio
+async def test_pipeline_calls_vector_store_upsert_after_embeddings() -> None:
+    with (
+        patch(
+            "app.pipelines.ingestion.pipeline._download_from_s3",
+            AsyncMock(return_value=b"Hello world"),
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline.parse_document",
+            return_value="Hello world",
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline.scrub_pii",
+            return_value="Hello world",
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._chunk_text",
+            return_value=[_make_chunk()],
+        ),
+        patch(
+            "app.pipelines.ingestion.pipeline._generate_embeddings",
+            AsyncMock(return_value=None),
+        ) as mock_embed,
+        patch(
+            "app.pipelines.ingestion.pipeline._upsert_to_vector_store",
+            AsyncMock(return_value=None),
+        ) as mock_upsert,
+    ):
+        await run_ingestion_pipeline(_make_payload(), AsyncMock(), _make_settings(), _make_agent())
+
+    mock_embed.assert_awaited_once()
+    mock_upsert.assert_awaited_once()

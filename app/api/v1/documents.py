@@ -67,3 +67,19 @@ async def list_documents_route(
     except ValueError as exc:
         raise InvalidCursorError(str(exc)) from exc
     return DocumentListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.delete(
+    "/{agent_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_document_route(
+    agent_id: str,
+    document_id: str,
+    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+) -> None:
+    await ingestion_service.delete_document(
+        document_id=document_id,
+        agent_id=agent_id,
+        tenant_id=caller.tenant_id,
+    )

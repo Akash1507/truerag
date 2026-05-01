@@ -7,6 +7,7 @@ from app.providers.registry import (
     VECTOR_STORE_REGISTRY,
 )
 from app.providers.rerankers.passthrough import PassthroughReranker
+from app.providers.vector_stores.pgvector import PgVectorStore
 
 
 def test_all_five_registries_importable() -> None:
@@ -27,10 +28,10 @@ def test_none_key_returns_passthrough_instance() -> None:
     assert isinstance(reranker, PassthroughReranker)
 
 
-def test_empty_registries_are_dicts() -> None:
-    """Registries not yet populated should be empty dicts, not None or missing."""
-    assert VECTOR_STORE_REGISTRY == {}
-    assert EMBEDDING_REGISTRY == {}
+def test_registry_entries_for_current_epic() -> None:
+    """Current stories register pgvector and openai providers."""
+    assert VECTOR_STORE_REGISTRY == {"pgvector": PgVectorStore}
+    assert "openai" in EMBEDDING_REGISTRY
     assert LLM_REGISTRY == {}
 
 

@@ -22,18 +22,18 @@ def test_get_reranker_unknown_raises_provider_unavailable() -> None:
 
 
 def test_get_vector_store_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown vector store provider.*pgvector"):
-        get_vector_store("pgvector")
+    with pytest.raises(ProviderUnavailableError, match="Unknown vector store provider.*qdrant"):
+        get_vector_store("qdrant")
 
 
 def test_get_chunker_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown chunking strategy.*fixed"):
-        get_chunker("fixed")
+    with pytest.raises(ProviderUnavailableError, match="Unknown chunking strategy.*semantic"):
+        get_chunker("semantic")
 
 
 def test_get_embedder_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown embedding provider.*openai"):
-        get_embedder("openai")
+    with pytest.raises(ProviderUnavailableError, match="Unknown embedding provider.*cohere"):
+        get_embedder("cohere")
 
 
 def test_get_llm_provider_unknown_raises_provider_unavailable() -> None:

@@ -6,7 +6,13 @@ import pytest
 from fastapi import UploadFile
 
 from app.core.config import Settings
-from app.core.errors import DocumentNotFoundError, ForbiddenError, IngestionError, UnsupportedFileTypeError
+from app.core.errors import (
+    DocumentNotFoundError,
+    ForbiddenError,
+    IngestionError,
+    ProviderUnavailableError,
+    UnsupportedFileTypeError,
+)
 from app.models.document import DocumentRecord, DocumentStatus
 from app.models.ingestion_job import IngestionJob
 from app.services import ingestion_service
@@ -169,3 +175,69 @@ async def test_list_documents_returns_page() -> None:
 
     assert len(items) == 2
     assert next_cursor is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_document_not_found() -> None:
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find_one", AsyncMock(return_value=None)
+    ), patch.object(ingestion_service.ingestion_job_dao, "delete_many", AsyncMock()) as delete_jobs, patch.object(
+        ingestion_service.document_dao, "delete_one", AsyncMock()
+    ) as delete_doc:
+        with pytest.raises(DocumentNotFoundError):
+            await ingestion_service.delete_document("missing", AGENT_ID, TENANT_ID)
+
+    delete_jobs.assert_not_awaited()
+    delete_doc.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_forbidden_on_ownership_mismatch() -> None:
+    doc = _make_document(tenant_id="other-tenant")
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find_one", AsyncMock(return_value=doc)
+    ), patch.object(ingestion_service.ingestion_job_dao, "delete_many", AsyncMock()) as delete_jobs, patch.object(
+        ingestion_service.document_dao, "delete_one", AsyncMock()
+    ) as delete_doc:
+        with pytest.raises(ForbiddenError):
+            await ingestion_service.delete_document("doc-1", AGENT_ID, TENANT_ID)
+
+    delete_jobs.assert_not_awaited()
+    delete_doc.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_fails_when_provider_lacks_capability() -> None:
+    doc = _make_document()
+    agent = MagicMock(vector_store="pgvector")
+    mock_store = object()
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch.object(
+        ingestion_service.document_dao, "find_one", AsyncMock(return_value=doc)
+    ), patch("app.services.ingestion_service.get_vector_store", return_value=mock_store), patch.object(
+        ingestion_service.ingestion_job_dao, "delete_many", AsyncMock()
+    ) as delete_jobs, patch.object(ingestion_service.document_dao, "delete_one", AsyncMock()) as delete_doc:
+        with pytest.raises(ProviderUnavailableError):
+            await ingestion_service.delete_document("doc-1", AGENT_ID, TENANT_ID)
+
+    delete_jobs.assert_not_awaited()
+    delete_doc.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_document_success_orders_cleanup() -> None:
+    doc = _make_document()
+    agent = MagicMock(vector_store="pgvector")
+    delete_vector = AsyncMock(return_value=None)
+    mock_store = MagicMock(delete_document=delete_vector)
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=agent)), patch.object(
+        ingestion_service.document_dao, "find_one", AsyncMock(return_value=doc)
+    ), patch("app.services.ingestion_service.get_vector_store", return_value=mock_store), patch.object(
+        ingestion_service.ingestion_job_dao, "delete_many", AsyncMock()
+    ) as delete_jobs, patch.object(ingestion_service.document_dao, "delete_one", AsyncMock()) as delete_doc:
+        await ingestion_service.delete_document("doc-1", AGENT_ID, TENANT_ID)
+
+    delete_vector.assert_awaited_once_with(f"{TENANT_ID}_{AGENT_ID}", "doc-1")
+    delete_jobs.assert_awaited_once_with({"job_id": "job-1", "tenant_id": TENANT_ID})
+    delete_doc.assert_awaited_once_with(
+        {"document_id": "doc-1", "agent_id": AGENT_ID, "tenant_id": TENANT_ID}
+    )
