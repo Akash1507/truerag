@@ -35,7 +35,7 @@ def _stub_response() -> QueryResponse:
 
 @pytest.mark.asyncio
 async def test_handle_query_happy_path_calls_pipeline() -> None:
-    req = QueryRequest(query="hello", top_k=3)
+    req = QueryRequest(query="hello", top_k=3, filters={"document_id": "doc-1"})
     agent = _make_agent(top_k=5)
     stub = _stub_response()
     with patch(
@@ -48,7 +48,12 @@ async def test_handle_query_happy_path_calls_pipeline() -> None:
         result = await query_service.handle_query("agent-1", "tenant-1", req)
 
     assert result == stub
-    mock_pipeline.assert_awaited_once_with(query="hello", top_k=3, agent=agent)
+    mock_pipeline.assert_awaited_once_with(
+        query="hello",
+        top_k=3,
+        agent=agent,
+        filters={"document_id": "doc-1"},
+    )
 
 
 @pytest.mark.asyncio
@@ -64,7 +69,7 @@ async def test_handle_query_top_k_fallback_to_agent_default() -> None:
     ) as mock_pipeline:
         await query_service.handle_query("agent-1", "tenant-1", req)
 
-    mock_pipeline.assert_awaited_once_with(query="hello", top_k=5, agent=agent)
+    mock_pipeline.assert_awaited_once_with(query="hello", top_k=5, agent=agent, filters=None)
 
 
 @pytest.mark.asyncio
@@ -83,3 +88,40 @@ async def test_handle_query_not_found_propagates() -> None:
         AsyncMock(side_effect=AgentNotFoundError("not found")),
     ), pytest.raises(AgentNotFoundError):
         await query_service.handle_query("agent-1", "tenant-1", QueryRequest(query="q"))
+
+
+@pytest.mark.asyncio
+async def test_handle_query_passes_filters_to_pipeline() -> None:
+    req = QueryRequest(query="hello", top_k=3, filters={"document_id": "doc-1"})
+    agent = _make_agent(top_k=5)
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=_stub_response()),
+    ) as mock_pipeline:
+        await query_service.handle_query("agent-1", "tenant-1", req)
+
+    mock_pipeline.assert_awaited_once_with(
+        query="hello",
+        top_k=3,
+        agent=agent,
+        filters={"document_id": "doc-1"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_query_passes_none_filters_when_omitted() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=_stub_response()),
+    ) as mock_pipeline:
+        await query_service.handle_query("agent-1", "tenant-1", req)
+
+    mock_pipeline.assert_awaited_once_with(query="hello", top_k=3, agent=agent, filters=None)

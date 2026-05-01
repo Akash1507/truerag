@@ -111,3 +111,53 @@ async def test_query_route_invalid_top_k_returns_422(client) -> None:  # type: i
             headers={"X-API-Key": "key"},
         )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_query_route_accepts_filters_and_propagates(client) -> None:  # type: ignore[no-untyped-def]
+    mock_handle_query = AsyncMock(
+        return_value=QueryResponse(
+            answer="stub",
+            confidence=0.5,
+            citations=[],
+            latency_ms=7,
+        )
+    )
+    with patch("app.core.auth.tenant_dao.find_one", AsyncMock(return_value=_tenant())), patch(
+        "app.api.v1.query.query_service.handle_query",
+        mock_handle_query,
+    ):
+        response = await client.post(
+            "/v1/agents/agent-1/query",
+            json={"query": "hello", "filters": {"document_id": "doc-1"}},
+            headers={"X-API-Key": "key"},
+        )
+
+    assert response.status_code == 200
+    request_model = mock_handle_query.await_args.kwargs["request"]
+    assert request_model.filters == {"document_id": "doc-1"}
+
+
+@pytest.mark.asyncio
+async def test_query_route_without_filters_defaults_to_none(client) -> None:  # type: ignore[no-untyped-def]
+    mock_handle_query = AsyncMock(
+        return_value=QueryResponse(
+            answer="stub",
+            confidence=0.5,
+            citations=[],
+            latency_ms=7,
+        )
+    )
+    with patch("app.core.auth.tenant_dao.find_one", AsyncMock(return_value=_tenant())), patch(
+        "app.api.v1.query.query_service.handle_query",
+        mock_handle_query,
+    ):
+        response = await client.post(
+            "/v1/agents/agent-1/query",
+            json={"query": "hello"},
+            headers={"X-API-Key": "key"},
+        )
+
+    assert response.status_code == 200
+    request_model = mock_handle_query.await_args.kwargs["request"]
+    assert request_model.filters is None
