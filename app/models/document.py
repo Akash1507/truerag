@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from beanie import Document
 from pydantic import BaseModel
+from pymongo import ASCENDING, IndexModel
 
 
 class DocumentStatus(StrEnum):
@@ -20,12 +21,34 @@ class DocumentRecord(Document):
     file_type: str
     s3_key: str
     job_id: str | None = None
+    version: int = 1
+    content_hash: str | None = None
+    lineage_id: str | None = None
+    archived_at: datetime | None = None
+    superseded_by_document_id: str | None = None
     status: DocumentStatus
     error_reason: str | None = None
     created_at: datetime
 
     class Settings:
         name = "documents"
+        indexes = [
+            IndexModel(
+                [
+                    ("tenant_id", ASCENDING),
+                    ("agent_id", ASCENDING),
+                    ("archived_at", ASCENDING),
+                    ("content_hash", ASCENDING),
+                    ("created_at", ASCENDING),
+                ]
+            ),
+            IndexModel(
+                [("lineage_id", ASCENDING), ("version", ASCENDING), ("created_at", ASCENDING)]
+            ),
+            IndexModel(
+                [("tenant_id", ASCENDING), ("agent_id", ASCENDING), ("archived_at", ASCENDING)]
+            ),
+        ]
 
 
 class DocumentUploadResponse(BaseModel):

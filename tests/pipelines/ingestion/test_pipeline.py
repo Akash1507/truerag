@@ -343,3 +343,31 @@ async def test_pipeline_calls_vector_store_upsert_after_embeddings() -> None:
 
     mock_embed.assert_awaited_once()
     mock_upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_uses_persisted_document_version_in_chunk_metadata() -> None:
+    mock_chunker_cls = MagicMock()
+    mock_chunker_instance = MagicMock()
+    captured_versions: list[int] = []
+
+    def _capture_chunk(text: str, metadata: ChunkMetadata) -> list[Chunk]:
+        captured_versions.append(metadata.version)
+        return [_make_chunk()]
+
+    mock_chunker_instance.chunk.side_effect = _capture_chunk
+    mock_chunker_cls.return_value = mock_chunker_instance
+
+    with (
+        patch("app.pipelines.ingestion.pipeline._download_from_s3", AsyncMock(return_value=b"some text")),
+        patch("app.pipelines.ingestion.pipeline.parse_document", return_value="some text"),
+        patch("app.pipelines.ingestion.pipeline.scrub_pii", return_value="some text"),
+        patch("app.pipelines.ingestion.pipeline.CHUNKING_REGISTRY", {"fixed_size": mock_chunker_cls}),
+        patch("app.pipelines.ingestion.pipeline._generate_embeddings", AsyncMock(return_value=None)),
+        patch("app.pipelines.ingestion.pipeline._upsert_to_vector_store", AsyncMock(return_value=None)),
+    ):
+        await run_ingestion_pipeline(
+            _make_payload(), AsyncMock(), _make_settings(), _make_agent(), document_version=4
+        )
+
+    assert captured_versions == [4]

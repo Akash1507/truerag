@@ -22,11 +22,12 @@ async def run_ingestion_pipeline(
     aws_session: aioboto3.Session,
     settings: Settings,
     agent: AgentDocument,
+    document_version: int = 1,
 ) -> None:
     content = await _download_from_s3(payload, aws_session, settings)
     raw_text = parse_document(content, payload.file_type)
     scrubbed_text = _scrub_with_logging(raw_text, payload)
-    chunks = _chunk_text(scrubbed_text, payload, agent)
+    chunks = _chunk_text(scrubbed_text, payload, agent, document_version)
     await _generate_embeddings(chunks, agent, aws_session)
     await _upsert_to_vector_store(chunks, payload, agent)
 
@@ -65,7 +66,7 @@ def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:
 
 
 def _chunk_text(
-    text: str, payload: IngestionJobPayload, agent: AgentDocument
+    text: str, payload: IngestionJobPayload, agent: AgentDocument, document_version: int
 ) -> list[Chunk]:
     chunker_cls = CHUNKING_REGISTRY.get(agent.chunking_strategy)
     if not chunker_cls:
@@ -78,7 +79,7 @@ def _chunk_text(
         chunk_index=0,
         chunking_strategy=agent.chunking_strategy,
         timestamp=datetime.now(UTC),
-        version=1,
+        version=document_version,
     )
     chunks = chunker.chunk(text, metadata)
     if not chunks:

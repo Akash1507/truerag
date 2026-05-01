@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import UTC, datetime
 
 import aioboto3  # type: ignore[import-untyped]
@@ -65,6 +66,26 @@ async def upload_document(
             http_status=413,
         )
 
+    content_hash = hashlib.sha256(content).hexdigest()
+    predecessor_candidates = await document_dao.find(
+        {
+            "tenant_id": tenant_id,
+            "agent_id": agent_id,
+            "content_hash": content_hash,
+            "archived_at": None,
+            "status": DocumentStatus.ready,
+        },
+        sort=[("created_at", -1)],
+        limit=1,
+    )
+    predecessor = predecessor_candidates[0] if predecessor_candidates else None
+    if predecessor is None:
+        version = 1
+        lineage_id = document_id
+    else:
+        version = predecessor.version + 1
+        lineage_id = predecessor.lineage_id or predecessor.document_id
+
     # 1. Archive to S3 — failure propagates as 500 before any writes
     async with aws_session.client(
         "s3",
@@ -85,6 +106,11 @@ async def upload_document(
         file_type=file_ext,
         s3_key=s3_key,
         job_id=job_id,
+        version=version,
+        content_hash=content_hash,
+        lineage_id=lineage_id,
+        archived_at=None,
+        superseded_by_document_id=None,
         status=DocumentStatus.queued,
         error_reason=None,
         created_at=now,
@@ -256,7 +282,11 @@ async def list_documents(
 ) -> tuple[list[DocumentListItem], str | None]:
     await agent_service.get_agent(agent_id, tenant_id)
 
-    query: dict[str, object] = {"agent_id": agent_id, "tenant_id": tenant_id}
+    query: dict[str, object] = {
+        "agent_id": agent_id,
+        "tenant_id": tenant_id,
+        "archived_at": None,
+    }
     if cursor:
         oid = decode_cursor(cursor)
         query["_id"] = {"$gt": oid}

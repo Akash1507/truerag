@@ -63,6 +63,11 @@ def _make_document(**overrides: object) -> DocumentRecord:
         "file_type": "pdf",
         "s3_key": "tenant/agent/doc.pdf",
         "job_id": "job-1",
+        "version": 1,
+        "content_hash": "abc123",
+        "lineage_id": "lineage-1",
+        "archived_at": None,
+        "superseded_by_document_id": None,
         "status": DocumentStatus.queued,
         "error_reason": None,
         "created_at": ingestion_service.datetime.now(ingestion_service.UTC),
@@ -71,10 +76,22 @@ def _make_document(**overrides: object) -> DocumentRecord:
     return DocumentRecord(**base)
 
 
+def test_document_record_exposes_versioning_fields_and_indexes() -> None:
+    doc = _make_document()
+    assert hasattr(doc, "version")
+    assert hasattr(doc, "content_hash")
+    assert hasattr(doc, "lineage_id")
+    assert hasattr(doc, "archived_at")
+    assert hasattr(doc, "superseded_by_document_id")
+    assert len(DocumentRecord.Settings.indexes) >= 3
+
+
 @pytest.mark.asyncio
 async def test_upload_document_success() -> None:
     aws = _make_aws_mock()
     with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[])
+    ), patch.object(
         ingestion_service.document_dao, "insert_one", AsyncMock()
     ) as insert_doc, patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()) as insert_job:
         result = await ingestion_service.upload_document(
@@ -107,6 +124,8 @@ async def test_upload_document_rejects_unsupported_type() -> None:
 async def test_upload_document_marks_failed_on_sqs_error() -> None:
     aws = _make_aws_mock(sqs_side_effect=RuntimeError("queue error"))
     with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[])
+    ), patch.object(
         ingestion_service.document_dao, "insert_one", AsyncMock()
     ), patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()), patch.object(
         ingestion_service.document_dao, "update", AsyncMock()
@@ -170,11 +189,73 @@ async def test_list_documents_returns_page() -> None:
 
     with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
         ingestion_service.document_dao, "find", AsyncMock(return_value=docs)
-    ):
+    ) as find_docs:
         items, next_cursor = await ingestion_service.list_documents(AGENT_ID, TENANT_ID, limit=2)
 
     assert len(items) == 2
     assert next_cursor is not None
+    assert find_docs.await_args.args[0]["archived_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_upload_document_assigns_version_1_when_no_hash_match() -> None:
+    aws = _make_aws_mock()
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[])
+    ), patch.object(ingestion_service.document_dao, "insert_one", AsyncMock()) as insert_doc, patch.object(
+        ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
+    ):
+        await ingestion_service.upload_document(
+            _make_upload_file("report.pdf", b"same-bytes"),
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+    inserted = insert_doc.await_args.args[0]
+    assert inserted.version == 1
+
+
+@pytest.mark.asyncio
+async def test_upload_document_increments_version_when_hash_match_exists() -> None:
+    aws = _make_aws_mock()
+    predecessor = _make_document(version=2, lineage_id="lineage-xyz", status=DocumentStatus.ready)
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[predecessor])
+    ), patch.object(ingestion_service.document_dao, "insert_one", AsyncMock()) as insert_doc, patch.object(
+        ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
+    ):
+        await ingestion_service.upload_document(
+            _make_upload_file("report.pdf", b"same-bytes"),
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+    inserted = insert_doc.await_args.args[0]
+    assert inserted.version == 3
+    assert inserted.lineage_id == "lineage-xyz"
+
+
+@pytest.mark.asyncio
+async def test_upload_document_ignores_failed_hash_match_when_assigning_version() -> None:
+    aws = _make_aws_mock()
+    with patch("app.services.ingestion_service.agent_service.get_agent", AsyncMock(return_value=MagicMock())), patch.object(
+        ingestion_service.document_dao, "find", AsyncMock(return_value=[])
+    ) as find_docs, patch.object(
+        ingestion_service.document_dao, "insert_one", AsyncMock()
+    ) as insert_doc, patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()):
+        await ingestion_service.upload_document(
+            _make_upload_file("report.pdf", b"same-bytes"),
+            AGENT_ID,
+            TENANT_ID,
+            aws,
+            _make_settings(),
+        )
+
+    inserted = insert_doc.await_args.args[0]
+    assert find_docs.await_args.args[0]["status"] == DocumentStatus.ready
+    assert inserted.version == 1
 
 
 @pytest.mark.asyncio
