@@ -1,3 +1,14 @@
+## Deferred from: code review of 3-4-pii-scrubbing-at-ingestion.md (2026-05-01)
+
+- **S3 object fully buffered with no size guard** (`pipeline.py:35`) — `response["Body"].read()` loads the entire S3 object into memory; a large file will OOM the worker. Add `ContentLength` check or streaming with a ceiling when a max-file-size config is defined.
+- **`_extract_text` ignores `file_type`, always UTF-8 decodes** (`pipeline.py:38-40`) — intentional stub; PDF/DOCX bytes produce garbage/replacement-char text. Epic 4 replaces with real parsers; at that point enforce branching on `file_type`.
+- **`IngestionJobPayload.timestamp` is a raw `str` — no format enforcement** (`ingestion_job.py:17`) — spec-compliant as-is; tighten to `datetime` or add a validator when payload schema is formalized.
+- **PII scrub log omits `s3_key` and `job_id`** (`pipeline.py:47-58`) — makes S3-level incident triage harder; add to `extra_data` when log schema is standardized.
+- **`_download_from_s3` has no request timeout** (`pipeline.py:29-35`) — a stalled S3 endpoint blocks the worker event loop until SQS visibility timeout expires and re-enqueues; set `connect_timeout` / `read_timeout` on the aioboto3 client when global AWS client config is introduced.
+- **`_get_engines()` lazy-init failure propagates as raw `Exception`** (`pii.py`) — pre-existing: if the spaCy model is missing, `OSError`/`ImportError` bubbles up unclassified rather than as `ProviderUnavailableError`; fix in `pii.py` when engine initialization is hardened.
+- **`payload.s3_key` used verbatim in S3 `get_object` — no tenant namespace check** (`pipeline.py:34`) — a crafted SQS message can read any bucket object; enforce `s3_key` prefix scoping (`{tenant_id}/{agent_id}/`) in the SQS consumer (story 3-2) when SQS message validation is tightened.
+- **DAO status-update calls sit before `try` block in `process_job`** (`ingestion_worker.py`) — pre-existing: a DAO failure during the `processing` status write leaves the document stuck in `queued` with no `failed` marker; wrap pre-pipeline DAO calls in the same try/except when `process_job` error handling is revisited.
+
 ## Deferred from: code review of 1-10-beanie-odm-dao-layer-and-dynamodb-removal.md (2026-05-01)
 
 - **No unique constraint on `job_id` in `IngestionJob`** — simple index only; concurrent uploads with same `job_id` could create duplicates. UUID generation makes collision negligible; revisit if job_id generation changes.

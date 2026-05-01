@@ -1,9 +1,21 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from beanie import Document
 from pydantic import Field
 
 from app.models.document import DocumentStatus
+
+
+@dataclass
+class IngestionJobPayload:
+    job_id: str
+    tenant_id: str
+    agent_id: str
+    document_id: str
+    s3_key: str
+    file_type: str
+    timestamp: str
 
 
 class IngestionJob(Document):

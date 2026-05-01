@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.config import Settings
-from app.workers.ingestion_worker import IngestionJobPayload, process_job
+from app.models.ingestion_job import IngestionJobPayload
+from app.workers.ingestion_worker import process_job
 
 
 def _make_settings() -> Settings:
@@ -29,7 +30,7 @@ def _make_payload() -> IngestionJobPayload:
 
 @pytest.mark.asyncio
 async def test_process_job_updates_processing_then_ready() -> None:
-    with patch("app.workers.ingestion_worker._run_pipeline_stub", AsyncMock(return_value=None)), patch(
+    with patch("app.workers.ingestion_worker.run_ingestion_pipeline", AsyncMock(return_value=None)), patch(
         "app.workers.ingestion_worker.document_dao.update", AsyncMock()
     ) as update_doc, patch("app.workers.ingestion_worker.ingestion_job_dao.update", AsyncMock()) as update_job:
         await process_job(_make_payload(), AsyncMock(), _make_settings())

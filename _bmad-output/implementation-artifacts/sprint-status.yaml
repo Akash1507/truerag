@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-01T00:00:00Z  # updated: story 1-10 done; epic-1 and epic-2 marked done
+last_updated: 2026-05-01T00:00:00Z  # updated: story 3-4 done (code review)
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -71,7 +71,7 @@ development_status:
   3-1-document-upload-s3-archive-and-sqs-enqueue: done
   3-2-sqs-consumer-worker-and-ingestion-job-status-tracking: done
   3-3-ingestion-status-polling-and-document-listing: done
-  3-4-pii-scrubbing-at-ingestion: backlog
+  3-4-pii-scrubbing-at-ingestion: done
   epic-3-retrospective: optional
 
   # Epic 4: Chunking, Embedding & Vector Store Namespace Isolation
