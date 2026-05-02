@@ -29,6 +29,7 @@ def test_cohere_reranker_calls_api_with_query_documents_and_top_k() -> None:
     with (
         patch("app.providers.rerankers.cohere.get_secret", return_value="cohere-key"),
         patch("app.providers.rerankers.cohere.cohere.ClientV2", return_value=fake_client),
+        patch("app.providers.rerankers.cohere.record_reranker_call") as mock_record_reranker_call,
     ):
         reranker = CohereReranker()
         result = reranker.rerank(query="my query", chunks=chunks, top_k=2)
@@ -39,6 +40,7 @@ def test_cohere_reranker_calls_api_with_query_documents_and_top_k() -> None:
         documents=["chunk 0", "chunk 1", "chunk 2"],
         top_n=2,
     )
+    mock_record_reranker_call.assert_called_once()
     assert [chunk.metadata.chunk_index for chunk in result] == [2, 0]
 
 

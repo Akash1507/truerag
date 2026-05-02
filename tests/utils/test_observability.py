@@ -5,6 +5,7 @@ from app.utils.observability import (
     JSONFormatter,
     LatencyTracker,
     get_logger,
+    log_stage_latency,
     reset_request_context,
     set_request_context,
 )
@@ -126,3 +127,39 @@ def test_reset_request_context_restores_previous_values() -> None:
     assert parsed["tenant_id"] == "outer-tenant"
     assert parsed["agent_id"] == "outer-agent"
     reset_request_context(outer_tokens)
+
+
+def test_log_stage_latency_emits_operation_and_latency() -> None:
+    logger = logging.getLogger("test.observability.stage_latency")
+    logger.handlers = []
+    logger.setLevel(logging.INFO)
+    logger.propagate = True
+
+    tokens = set_request_context(
+        request_id="req-9-1",
+        tenant_id="tenant-9-1",
+        agent_id="agent-9-1",
+    )
+    try:
+        record: logging.LogRecord | None = None
+
+        class _Capture(logging.Handler):
+            def emit(self, rec: logging.LogRecord) -> None:
+                nonlocal record
+                record = rec
+
+        handler = _Capture()
+        logger.addHandler(handler)
+        log_stage_latency(logger, "retrieval", 23)
+    finally:
+        reset_request_context(tokens)
+        logger.handlers = []
+
+    assert record is not None
+    formatter = JSONFormatter()
+    parsed = json.loads(formatter.format(record))
+    assert parsed["operation"] == "retrieval"
+    assert parsed["latency_ms"] == 23
+    assert parsed["request_id"] == "req-9-1"
+    assert parsed["tenant_id"] == "tenant-9-1"
+    assert parsed["agent_id"] == "agent-9-1"

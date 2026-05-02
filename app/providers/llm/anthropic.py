@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.core.errors import ProviderUnavailableError
 from app.interfaces.llm_provider import LLMProvider
 from app.models.chunk import Chunk
+from app.utils.cost_tracker import record_llm_usage
 from app.utils.retry import retry
 from app.utils.secrets import get_secret
 
@@ -46,6 +47,10 @@ class AnthropicLLMProvider(LLMProvider):
         for block in message.content:
             text = getattr(block, "text", None)
             if isinstance(text, str) and text:
+                usage = getattr(message, "usage", None)
+                prompt_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+                record_llm_usage(prompt_tokens, completion_tokens)
                 return text
         raise ProviderUnavailableError("Anthropic API returned no text content")
 

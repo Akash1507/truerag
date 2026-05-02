@@ -13,7 +13,9 @@ async def test_openai_embedder_success():
     ]
     
     with patch("app.providers.embedding.openai.get_secret", return_value="fake-key") as mock_get_secret:
-        with patch("app.providers.embedding.openai.AsyncOpenAI") as mock_client_cls:
+        with patch("app.providers.embedding.openai.AsyncOpenAI") as mock_client_cls, patch(
+            "app.providers.embedding.openai.record_embedding_call"
+        ) as mock_record_embedding_call:
             mock_client = mock_client_cls.return_value
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_client.close = AsyncMock()
@@ -26,6 +28,7 @@ async def test_openai_embedder_success():
             assert vectors[0] == [0.1, 0.2, 0.3]
             assert vectors[1] == [0.4, 0.5, 0.6]
             mock_get_secret.assert_called_once()
+            mock_record_embedding_call.assert_called_once()
             mock_client.embeddings.create.assert_called_once_with(
                 input=texts, model="text-embedding-3-small"
             )

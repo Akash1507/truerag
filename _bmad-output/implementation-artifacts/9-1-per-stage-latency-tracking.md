@@ -1,6 +1,6 @@
 # Story 9.1: Per-Stage Latency Tracking
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -18,44 +18,44 @@ so that I can identify bottlenecks across the pipeline and verify p95 targets ar
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `log_stage_latency()` helper to `app/utils/observability.py` (AC: #3)
-  - [ ] Function signature: `log_stage_latency(logger, operation: str, latency_ms: int) -> None`
-  - [ ] Emits structured log entry; `tenant_id`, `agent_id`, `request_id` auto-populated from context vars
-  - [ ] Add tests in `tests/utils/test_observability.py`
+- [x] Task 1: Add `log_stage_latency()` helper to `app/utils/observability.py` (AC: #3)
+  - [x] Function signature: `log_stage_latency(logger, operation: str, latency_ms: int) -> None`
+  - [x] Emits structured log entry; `tenant_id`, `agent_id`, `request_id` auto-populated from context vars
+  - [x] Add tests in `tests/utils/test_observability.py`
 
-- [ ] Task 2: Set tenant/agent context vars in query API handler (AC: #1)
-  - [ ] In `app/api/v1/query.py`, after resolving agent, call `set_request_context(request_id=..., tenant_id=tenant.tenant_id, agent_id=agent_id)`
-  - [ ] Reset context after handler returns (use try/finally pattern matching `RequestIDMiddleware`)
-  - [ ] This ensures `tenant_id` and `agent_id` appear in all downstream log entries for the request
+- [x] Task 2: Set tenant/agent context vars in query API handler (AC: #1)
+  - [x] In `app/api/v1/query.py`, after resolving agent, call `set_request_context(request_id=..., tenant_id=tenant.tenant_id, agent_id=agent_id)`
+  - [x] Reset context after handler returns (use try/finally pattern matching `RequestIDMiddleware`)
+  - [x] This ensures `tenant_id` and `agent_id` appear in all downstream log entries for the request
 
-- [ ] Task 3: Refactor `app/pipelines/query/pipeline.py` — replace inline timers with `LatencyTracker` (AC: #1, #3)
-  - [ ] Remove all `import time` and `time.perf_counter()` calls
-  - [ ] Instantiate `LatencyTracker()` at each stage boundary
-  - [ ] Emit per-stage log entry via `log_stage_latency()` for: `pii_scrub`, `retrieval`, `reranking`, `generation`
-  - [ ] Keep existing summary log at pipeline end (it is additional context; does not replace per-stage entries)
+- [x] Task 3: Refactor `app/pipelines/query/pipeline.py` — replace inline timers with `LatencyTracker` (AC: #1, #3)
+  - [x] Remove all `import time` and `time.perf_counter()` calls
+  - [x] Instantiate `LatencyTracker()` at each stage boundary
+  - [x] Emit per-stage log entry via `log_stage_latency()` for: `pii_scrub`, `retrieval`, `reranking`, `generation`
+  - [x] Keep existing summary log at pipeline end (it is additional context; does not replace per-stage entries)
 
-- [ ] Task 4: Add `cache_lookup` stage tracking in `app/services/query_service.py` (AC: #1)
-  - [ ] Before calling `run_query_pipeline()`, wrap the cache lookup with `LatencyTracker`
-  - [ ] Call `semantic_cache.lookup(agent_id, query_vector, threshold)` from `app/utils/semantic_cache.py`
-  - [ ] Always emit `log_stage_latency(logger, "cache_lookup", tracker.elapsed_ms())` regardless of cache hit/miss
-  - [ ] If cache hit: short-circuit and skip pipeline; if miss: continue to `run_query_pipeline()`
-  - [ ] Note: requires embedding the query first to get `query_vector` for cache lookup — use `embedder.embed([scrubbed])[0]`; pass the pre-computed vector into the pipeline to avoid double-embedding
+- [x] Task 4: Add `cache_lookup` stage tracking in `app/services/query_service.py` (AC: #1)
+  - [x] Before calling `run_query_pipeline()`, wrap the cache lookup with `LatencyTracker`
+  - [x] Call `semantic_cache.lookup(agent_id, query_vector, threshold)` from `app/utils/semantic_cache.py`
+  - [x] Always emit `log_stage_latency(logger, "cache_lookup", tracker.elapsed_ms())` regardless of cache hit/miss
+  - [x] If cache hit: short-circuit and skip pipeline; if miss: continue to `run_query_pipeline()`
+  - [x] Note: requires embedding the query first to get `query_vector` for cache lookup — use `embedder.embed([scrubbed])[0]`; pass the pre-computed vector into the pipeline to avoid double-embedding
 
-- [ ] Task 5: Add `audit_log_write` stage tracking in `app/services/audit_service.py` (AC: #1)
-  - [ ] Wrap `table.put_item()` with `LatencyTracker`
-  - [ ] Emit `log_stage_latency(logger, "audit_log_write", tracker.elapsed_ms())` after write (success or failure)
-  - [ ] On failure path, still emit the latency entry before the existing error log
+- [x] Task 5: Add `audit_log_write` stage tracking in `app/services/audit_service.py` (AC: #1)
+  - [x] Wrap `table.put_item()` with `LatencyTracker`
+  - [x] Emit `log_stage_latency(logger, "audit_log_write", tracker.elapsed_ms())` after write (success or failure)
+  - [x] On failure path, still emit the latency entry before the existing error log
 
-- [ ] Task 6: Refactor `app/pipelines/ingestion/pipeline.py` — add per-stage latency for all 5 stages (AC: #2, #3)
-  - [ ] Remove `import time` and all `time.perf_counter()` calls
-  - [ ] Add `LatencyTracker` around each sub-function: `_download_from_s3`→skip (I/O infra, not required), `parse_document`→`parse`, `_scrub_with_logging`→`pii_scrub`, `_chunk_text`→`chunk`, `_generate_embeddings`→`embed`, `_upsert_to_vector_store`→`upsert`
-  - [ ] In `_scrub_with_logging()`: replace inline `t0 = time.perf_counter()` with `LatencyTracker`; move `latency_ms` to top-level extra key (not inside `extra_data`)
-  - [ ] For `parse`, `chunk`, `embed`, `upsert`: add `LatencyTracker` + emit per-stage entry via `log_stage_latency()`
+- [x] Task 6: Refactor `app/pipelines/ingestion/pipeline.py` — add per-stage latency for all 5 stages (AC: #2, #3)
+  - [x] Remove `import time` and all `time.perf_counter()` calls
+  - [x] Add `LatencyTracker` around each sub-function: `_download_from_s3`→skip (I/O infra, not required), `parse_document`→`parse`, `_scrub_with_logging`→`pii_scrub`, `_chunk_text`→`chunk`, `_generate_embeddings`→`embed`, `_upsert_to_vector_store`→`upsert`
+  - [x] In `_scrub_with_logging()`: replace inline `t0 = time.perf_counter()` with `LatencyTracker`; move `latency_ms` to top-level extra key (not inside `extra_data`)
+  - [x] For `parse`, `chunk`, `embed`, `upsert`: add `LatencyTracker` + emit per-stage entry via `log_stage_latency()`
 
-- [ ] Task 7: Update tests (AC: #1, #2)
-  - [ ] `tests/utils/test_observability.py`: test `log_stage_latency()` emits correct JSON fields
-  - [ ] `tests/pipelines/test_query_pipeline.py`: assert per-stage log entries are emitted (capture logger output via `caplog` or mock `log_stage_latency`)
-  - [ ] `tests/pipelines/test_ingestion_pipeline.py` (or equivalent): same for ingestion stages
+- [x] Task 7: Update tests (AC: #1, #2)
+  - [x] `tests/utils/test_observability.py`: test `log_stage_latency()` emits correct JSON fields
+  - [x] `tests/pipelines/test_query_pipeline.py`: assert per-stage log entries are emitted (capture logger output via `caplog` or mock `log_stage_latency`)
+  - [x] `tests/pipelines/test_ingestion_pipeline.py` (or equivalent): same for ingestion stages
 
 ## Dev Notes
 
@@ -180,7 +180,21 @@ Or mock `log_stage_latency` directly and assert `call_args_list`.
 claude-sonnet-4-6
 
 ### Debug Log References
+- Added `log_stage_latency` helper and replaced inline stage timing with `LatencyTracker` in query/ingestion paths.
+- Added context propagation in query API route and ingestion worker pipeline via `set_request_context`/`reset_request_context`.
 
 ### Completion Notes List
+- Implemented required per-stage operations for query (`pii_scrub`, `cache_lookup`, `retrieval`, `reranking`, `generation`, `audit_log_write`).
+- Implemented ingestion stage latency logging for `parse`, `pii_scrub`, `chunk`, `embed`, `upsert`.
+- Added/updated tests for observability helper and per-stage pipeline logging behavior.
 
 ### File List
+- app/utils/observability.py
+- app/api/v1/query.py
+- app/pipelines/query/pipeline.py
+- app/pipelines/ingestion/pipeline.py
+- app/services/query_service.py
+- app/services/audit_service.py
+- tests/utils/test_observability.py
+- tests/pipelines/query/test_pipeline.py
+- tests/pipelines/ingestion/test_pipeline.py

@@ -13,6 +13,16 @@ logger = get_logger(__name__)
 
 # Module-level fixed-window store: tenant_id → (window_start, request_count)
 _counters: dict[str, tuple[float, int]] = {}
+SKIP_RATE_LIMIT_PATHS: frozenset[str] = frozenset({
+    "/v1/health",
+    "/v1/ready",
+    "/v1/metrics",
+    "/v1/metrics/costs",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+    "/openapi.json",
+})
 
 
 def _rate_limit_error(request_id: str) -> JSONResponse:
@@ -30,6 +40,10 @@ def _rate_limit_error(request_id: str) -> JSONResponse:
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        path = request.url.path.rstrip("/") or "/"
+        if path in SKIP_RATE_LIMIT_PATHS:
+            return await call_next(request)
+
         if not hasattr(request.state, "tenant"):
             return await call_next(request)
 

@@ -1,4 +1,3 @@
-import time
 from datetime import UTC, datetime
 
 import aioboto3  # type: ignore[import-untyped]
@@ -11,7 +10,13 @@ from app.models.chunk import Chunk, ChunkMetadata, VectorRecord
 from app.models.ingestion_job import IngestionJobPayload
 from app.pipelines.ingestion.parser import parse_document
 from app.providers.registry import CHUNKING_REGISTRY, EMBEDDING_REGISTRY
-from app.utils.observability import get_logger
+from app.utils.observability import (
+    LatencyTracker,
+    get_logger,
+    log_stage_latency,
+    reset_request_context,
+    set_request_context,
+)
 from app.utils.pii import scrub_pii
 
 logger = get_logger(__name__)
@@ -24,12 +29,33 @@ async def run_ingestion_pipeline(
     agent: AgentDocument,
     document_version: int = 1,
 ) -> None:
-    content = await _download_from_s3(payload, aws_session, settings)
-    raw_text = parse_document(content, payload.file_type)
-    scrubbed_text = _scrub_with_logging(raw_text, payload)
-    chunks = _chunk_text(scrubbed_text, payload, agent, document_version)
-    await _generate_embeddings(chunks, agent, aws_session)
-    await _upsert_to_vector_store(chunks, payload, agent)
+    tokens = set_request_context(
+        request_id=payload.job_id,
+        tenant_id=payload.tenant_id,
+        agent_id=payload.agent_id,
+    )
+    try:
+        content = await _download_from_s3(payload, aws_session, settings)
+
+        tracker = LatencyTracker()
+        raw_text = parse_document(content, payload.file_type)
+        log_stage_latency(logger, "parse", tracker.elapsed_ms())
+
+        scrubbed_text = _scrub_with_logging(raw_text, payload)
+
+        tracker = LatencyTracker()
+        chunks = _chunk_text(scrubbed_text, payload, agent, document_version)
+        log_stage_latency(logger, "chunk", tracker.elapsed_ms())
+
+        tracker = LatencyTracker()
+        await _generate_embeddings(chunks, agent, aws_session)
+        log_stage_latency(logger, "embed", tracker.elapsed_ms())
+
+        tracker = LatencyTracker()
+        await _upsert_to_vector_store(chunks, payload, agent)
+        log_stage_latency(logger, "upsert", tracker.elapsed_ms())
+    finally:
+        reset_request_context(tokens)
 
 
 async def _download_from_s3(
@@ -47,18 +73,18 @@ async def _download_from_s3(
 
 
 def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:
-    t0 = time.perf_counter()
+    tracker = LatencyTracker()
     scrubbed = scrub_pii(raw_text, document_id=payload.document_id)
-    latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+    latency_ms = tracker.elapsed_ms()
     logger.info(
         "pii_scrub",
         extra={
             "operation": "pii_scrub",
+            "latency_ms": latency_ms,
             "extra_data": {
                 "tenant_id": payload.tenant_id,
                 "agent_id": payload.agent_id,
                 "document_id": payload.document_id,
-                "latency_ms": latency_ms,
             },
         },
     )

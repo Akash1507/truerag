@@ -14,6 +14,8 @@ logger = get_logger(__name__)
 SKIP_AUTH_PATHS: frozenset[str] = frozenset({
     "/v1/health",
     "/v1/ready",
+    "/v1/metrics",
+    "/v1/metrics/costs",
     "/docs",
     "/docs/oauth2-redirect",
     "/redoc",

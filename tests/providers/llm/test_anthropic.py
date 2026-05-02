@@ -11,6 +11,7 @@ from app.providers.llm.anthropic import AnthropicLLMProvider
 async def test_generate_returns_answer() -> None:
     fake_message = MagicMock()
     fake_message.content = [MagicMock(text="The answer is 42.")]
+    fake_message.usage = MagicMock(input_tokens=123, output_tokens=45)
     mock_client = MagicMock()
     mock_client.messages = MagicMock()
     mock_client.messages.create = AsyncMock(return_value=fake_message)
@@ -19,11 +20,13 @@ async def test_generate_returns_answer() -> None:
     with (
         patch("app.providers.llm.anthropic.get_secret", AsyncMock(return_value="sk-ant-test")),
         patch("anthropic.AsyncAnthropic", return_value=mock_client),
+        patch("app.providers.llm.anthropic.record_llm_usage") as mock_record_usage,
     ):
         provider = AnthropicLLMProvider()
         result = await provider.generate("What is 6*7?", [])
 
     assert result == "The answer is 42."
+    mock_record_usage.assert_called_once_with(123, 45)
 
 
 @pytest.mark.asyncio

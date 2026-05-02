@@ -192,7 +192,7 @@ async def test_log_includes_required_fields_and_no_text_content() -> None:
     assert extra_data["tenant_id"] == payload.tenant_id
     assert extra_data["agent_id"] == payload.agent_id
     assert extra_data["document_id"] == payload.document_id
-    assert "latency_ms" in extra_data
+    assert "latency_ms" in pii_scrub_calls[0][1]["extra"]
 
     for log_call in mock_logger.info.call_args_list:
         serialized = json.dumps(
@@ -200,6 +200,23 @@ async def test_log_includes_required_fields_and_no_text_content() -> None:
         )
         assert raw_text not in serialized
         assert scrubbed_text not in serialized
+
+
+@pytest.mark.asyncio
+async def test_pipeline_emits_per_stage_latency_logs() -> None:
+    with (
+        patch("app.pipelines.ingestion.pipeline._download_from_s3", AsyncMock(return_value=b"Hello world")),
+        patch("app.pipelines.ingestion.pipeline.parse_document", return_value="Hello world"),
+        patch("app.pipelines.ingestion.pipeline.scrub_pii", return_value="Hello world"),
+        patch("app.pipelines.ingestion.pipeline._chunk_text", return_value=[_make_chunk()]),
+        patch("app.pipelines.ingestion.pipeline._generate_embeddings", AsyncMock(return_value=None)),
+        patch("app.pipelines.ingestion.pipeline._upsert_to_vector_store", AsyncMock(return_value=None)),
+        patch("app.pipelines.ingestion.pipeline.log_stage_latency") as stage_latency_mock,
+    ):
+        await run_ingestion_pipeline(_make_payload(), AsyncMock(), _make_settings(), _make_agent())
+
+    operations = [call.args[1] for call in stage_latency_mock.call_args_list]
+    assert operations == ["parse", "chunk", "embed", "upsert"]
 
 
 @pytest.mark.asyncio

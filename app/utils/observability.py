@@ -65,3 +65,17 @@ class LatencyTracker:
 
     def elapsed_ms(self) -> int:
         return int((time.perf_counter() - self._start) * 1000)
+
+
+def log_stage_latency(
+    logger: logging.Logger,
+    operation: str,
+    latency_ms: int,
+) -> None:
+    logger.info(
+        operation,
+        extra={
+            "operation": operation,
+            "latency_ms": latency_ms,
+        },
+    )

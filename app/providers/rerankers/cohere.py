@@ -7,6 +7,7 @@ import cohere
 
 from app.interfaces.reranker import Reranker
 from app.models.chunk import Chunk
+from app.utils.cost_tracker import record_reranker_call
 from app.utils.retry import retry
 from app.utils.secrets import get_secret
 
@@ -51,5 +52,6 @@ class CohereReranker(Reranker):
         response = _run_coro_sync(
             self._rerank_call(client=client, query=query, documents=[chunk.text for chunk in chunks], top_k=top_k)
         )
+        record_reranker_call()
         results = getattr(response, "results", [])
         return [chunks[result.index] for result in results]

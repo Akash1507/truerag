@@ -5,6 +5,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.core.errors import ProviderUnavailableError
 from app.interfaces.embedding_provider import EmbeddingProvider
+from app.utils.cost_tracker import record_embedding_call
 from app.utils.retry import retry
 from app.utils.secrets import get_secret
 
@@ -40,7 +41,9 @@ class OpenAIEmbedder(EmbeddingProvider):
         client = AsyncOpenAI(api_key=api_key)
         
         try:
-            return await self._embed_with_retry(client, texts)
+            vectors = await self._embed_with_retry(client, texts)
+            record_embedding_call()
+            return vectors
         except (openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError) as exc:
             raise ProviderUnavailableError(f"OpenAI API exhausted retries: {exc}") from exc
         except Exception as exc:

@@ -138,6 +138,7 @@ async def test_run_query_pipeline_direct_route_skips_retrieval_and_returns_empty
         patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="direct")),
         patch("app.pipelines.query.pipeline._execute_direct_generation", AsyncMock(return_value="direct answer")),
         patch("app.pipelines.query.pipeline._execute_retrieval", AsyncMock()) as retrieval_mock,
+        patch("app.pipelines.query.pipeline.log_stage_latency") as stage_latency_mock,
     ):
         response = await run_query_pipeline(query="raw", top_k=5, agent=agent)
 
@@ -145,6 +146,11 @@ async def test_run_query_pipeline_direct_route_skips_retrieval_and_returns_empty
     assert response.answer == "direct answer"
     assert response.citations == []
     assert response.confidence == 0.0
+    operations = [call.args[1] for call in stage_latency_mock.call_args_list]
+    assert "pii_scrub" in operations
+    assert "generation" in operations
+    assert "retrieval" not in operations
+    assert "reranking" not in operations
 
 
 @pytest.mark.asyncio
@@ -162,6 +168,7 @@ async def test_run_query_pipeline_retrieval_route_with_query_rewrite_calls_rewri
         ) as retrieval_mock,
         patch("app.pipelines.query.pipeline._execute_rerank", return_value=[_result("a", 0.9)]),
         patch("app.pipelines.query.pipeline._execute_generation", AsyncMock(return_value="answer")),
+        patch("app.pipelines.query.pipeline.log_stage_latency") as stage_latency_mock,
     ):
         response = await run_query_pipeline(query="raw", top_k=5, agent=agent)
 
@@ -173,6 +180,8 @@ async def test_run_query_pipeline_retrieval_route_with_query_rewrite_calls_rewri
         filters=None,
     )
     assert response.answer == "answer"
+    operations = [call.args[1] for call in stage_latency_mock.call_args_list]
+    assert {"pii_scrub", "retrieval", "reranking", "generation"}.issubset(set(operations))
 
 
 @pytest.mark.asyncio

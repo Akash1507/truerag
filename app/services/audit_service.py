@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.core.config import get_settings
-from app.utils.observability import _request_id_var, get_logger
+from app.utils.observability import LatencyTracker, _request_id_var, get_logger, log_stage_latency
 
 logger = get_logger(__name__)
 
@@ -23,6 +23,7 @@ async def write_audit_log(
     settings = get_settings()
     _session = session or _default_session
     timestamp = datetime.now(UTC).isoformat()
+    tracker = LatencyTracker()
     try:
         async with _session.resource(
             "dynamodb",
@@ -43,6 +44,7 @@ async def write_audit_log(
                 }
             )
     except Exception as exc:
+        log_stage_latency(logger, "audit_log_write", tracker.elapsed_ms())
         logger.error(
             "audit_log_write_failed",
             extra={
@@ -55,3 +57,5 @@ async def write_audit_log(
                 },
             },
         )
+    else:
+        log_stage_latency(logger, "audit_log_write", tracker.elapsed_ms())

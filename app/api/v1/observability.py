@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request
+from importlib import import_module
+
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
@@ -58,3 +60,19 @@ async def readiness_check(request: Request) -> JSONResponse:
         extra={"operation": "readiness_check", "extra_data": {"result": "ok"}},
     )
     return JSONResponse(content={"mongodb": "ok", "pgvector": "ok", "sqs": "ok", "s3": "ok"})
+
+
+@router.get("/metrics")
+async def metrics_endpoint() -> Response:
+    metrics_service = import_module("app.services.metrics_service")
+    return Response(
+        content=metrics_service.generate_metrics_text(),
+        media_type=metrics_service.METRICS_CONTENT_TYPE,
+    )
+
+
+@router.get("/metrics/costs")
+async def metrics_costs_endpoint(window_hours: int = 24) -> JSONResponse:
+    metrics_service = import_module("app.services.metrics_service")
+    costs = await metrics_service.get_cost_breakdown(time_window_hours=window_hours)
+    return JSONResponse(content={"window_hours": window_hours, "costs": costs})

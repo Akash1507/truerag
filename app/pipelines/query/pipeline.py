@@ -1,5 +1,4 @@
 import asyncio
-import time
 from statistics import mean
 from typing import Literal
 
@@ -13,7 +12,7 @@ from app.pipelines.query.router import route_query
 from app.pipelines.query.rrf import reciprocal_rank_fusion
 from app.pipelines.query.sparse_retriever import retrieve_sparse
 from app.providers.registry import EMBEDDING_REGISTRY, LLM_REGISTRY, RERANKER_REGISTRY, VECTOR_STORE_REGISTRY
-from app.utils.observability import get_logger
+from app.utils.observability import LatencyTracker, get_logger, log_stage_latency
 from app.utils.pii import scrub_pii
 
 logger = get_logger(__name__)
@@ -30,28 +29,25 @@ async def run_query_pipeline(
     if agent.embedding_provider_mismatch:
         raise EmbeddingModelMismatchError()
 
-    t0 = time.perf_counter()
+    tracker = LatencyTracker()
+    summary_tracker = LatencyTracker()
     scrubbed_query = scrub_pii(query)
-    logger.info(
-        "pii_scrub",
-        extra={
-            "operation": "pii_scrub",
-            "extra_data": {"agent_id": agent.agent_id, "tenant_id": agent.tenant_id},
-        },
-    )
-    t_router = time.perf_counter()
+    log_stage_latency(logger, "pii_scrub", tracker.elapsed_ms())
+
+    tracker = LatencyTracker()
     route = await route_query(
         query=scrubbed_query,
         agent=agent,
         request_id=request_id,
         tenant_id=agent.tenant_id,
     )
-    router_ms = round((time.perf_counter() - t_router) * 1000)
+    router_ms = tracker.elapsed_ms()
     if route == "direct":
-        t_generation = time.perf_counter()
+        tracker = LatencyTracker()
         answer = await _execute_direct_generation(scrubbed_query=scrubbed_query, agent=agent)
-        generation_ms = round((time.perf_counter() - t_generation) * 1000)
-        latency_ms = round((time.perf_counter() - t0) * 1000)
+        generation_ms = tracker.elapsed_ms()
+        log_stage_latency(logger, "generation", generation_ms)
+        latency_ms = summary_tracker.elapsed_ms()
         logger.info(
             "query_pipeline",
             extra={
@@ -72,42 +68,47 @@ async def run_query_pipeline(
     rewriter_ms = 0
     retrieval_query = scrubbed_query
     if agent.query_rewrite:
-        t_rewriter = time.perf_counter()
+        tracker = LatencyTracker()
         retrieval_query = await rewrite_query(scrubbed_query, agent)
-        rewriter_ms = round((time.perf_counter() - t_rewriter) * 1000)
+        rewriter_ms = tracker.elapsed_ms()
 
-    t_retrieval = time.perf_counter()
+    tracker = LatencyTracker()
     retrieved_results = await _execute_retrieval(
         scrubbed_query=retrieval_query,
         top_k=top_k,
         agent=agent,
         filters=filters,
     )
-    retrieval_ms = round((time.perf_counter() - t_retrieval) * 1000)
-    t_reranker = time.perf_counter()
+    retrieval_ms = tracker.elapsed_ms()
+    log_stage_latency(logger, "retrieval", retrieval_ms)
+
+    tracker = LatencyTracker()
     results = _execute_rerank(
         scrubbed_query=scrubbed_query,
         results=retrieved_results,
         top_k=top_k,
         agent=agent,
     )
-    reranker_ms = round((time.perf_counter() - t_reranker) * 1000)
+    reranker_ms = tracker.elapsed_ms()
+    log_stage_latency(logger, "reranking", reranker_ms)
     answer = ""
-    t_generation = time.perf_counter()
+    generation_ms = 0
     if results:
+        tracker = LatencyTracker()
         answer = await _execute_generation(
             scrubbed_query=scrubbed_query,
             results=results,
             agent=agent,
             output_format=output_format,
         )
-    generation_ms = round((time.perf_counter() - t_generation) * 1000)
+        generation_ms = tracker.elapsed_ms()
+    log_stage_latency(logger, "generation", generation_ms)
     confidence = _compute_confidence(results)
     citations = [
         Citation(document_name=result.metadata.document_id, chunk_text=result.text, page_reference=None)
         for result in results
     ]
-    latency_ms = round((time.perf_counter() - t0) * 1000)
+    latency_ms = summary_tracker.elapsed_ms()
     logger.info(
         "query_pipeline",
         extra={

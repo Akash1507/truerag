@@ -57,6 +57,7 @@ async def test_handle_query_happy_path_calls_pipeline() -> None:
         agent=agent,
         filters={"document_id": "doc-1"},
         output_format=None,
+        request_id="",
     )
 
 
@@ -74,7 +75,9 @@ async def test_handle_query_top_k_fallback_to_agent_default() -> None:
     ) as mock_pipeline, patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
         await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
 
-    mock_pipeline.assert_awaited_once_with(query="hello", top_k=5, agent=agent, filters=None, output_format=None)
+    mock_pipeline.assert_awaited_once_with(
+        query="hello", top_k=5, agent=agent, filters=None, output_format=None, request_id=""
+    )
 
 
 @pytest.mark.asyncio
@@ -117,6 +120,7 @@ async def test_handle_query_passes_filters_to_pipeline() -> None:
         agent=agent,
         filters={"document_id": "doc-1"},
         output_format=None,
+        request_id="",
     )
 
 
@@ -134,7 +138,9 @@ async def test_handle_query_passes_none_filters_when_omitted() -> None:
     ) as mock_pipeline, patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
         await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
 
-    mock_pipeline.assert_awaited_once_with(query="hello", top_k=3, agent=agent, filters=None, output_format=None)
+    mock_pipeline.assert_awaited_once_with(
+        query="hello", top_k=3, agent=agent, filters=None, output_format=None, request_id=""
+    )
 
 
 @pytest.mark.asyncio
@@ -157,6 +163,7 @@ async def test_handle_query_passes_output_format_to_pipeline() -> None:
         agent=agent,
         filters=None,
         output_format="json",
+        request_id="",
     )
 
 
@@ -336,3 +343,49 @@ async def test_cache_disabled_skips_cache_check() -> None:
         await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
 
     cache_lookup.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_query_writes_query_cost_record() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    stub = _stub_response()
+    bg = BackgroundTasks()
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=stub),
+    ), patch(
+        "app.services.query_service.query_cost_dao.insert_one",
+        AsyncMock(),
+    ) as insert_one, patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
+        await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
+
+    insert_one.assert_awaited_once()
+    inserted = insert_one.await_args.args[0]
+    assert inserted.tenant_id == "tenant-1"
+    assert inserted.agent_id == "agent-1"
+    assert inserted.request_id == ""
+
+
+@pytest.mark.asyncio
+async def test_handle_query_cost_write_failure_does_not_fail_response() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    stub = _stub_response()
+    bg = BackgroundTasks()
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=stub),
+    ), patch(
+        "app.services.query_service.query_cost_dao.insert_one",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ), patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
+        result = await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
+
+    assert result == stub

@@ -4,6 +4,7 @@ from app.core.auth import get_current_tenant
 from app.models.query import QueryRequest, QueryResponse
 from app.models.tenant import TenantDocument
 from app.services import query_service
+from app.utils.observability import reset_request_context, set_request_context
 
 router = APIRouter()
 
@@ -17,10 +18,19 @@ async def query_agent_route(
     caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> QueryResponse:
     http_request.state.background_tasks = background_tasks
-    return await query_service.handle_query(
-        agent_id=agent_id,
+    request_id = getattr(http_request.state, "request_id", "")
+    tokens = set_request_context(
+        request_id=request_id,
         tenant_id=caller.tenant_id,
-        api_key_hash=caller.api_key_hash,
-        request=request,
-        background_tasks=background_tasks,
+        agent_id=agent_id,
     )
+    try:
+        return await query_service.handle_query(
+            agent_id=agent_id,
+            tenant_id=caller.tenant_id,
+            api_key_hash=caller.api_key_hash,
+            request=request,
+            background_tasks=background_tasks,
+        )
+    finally:
+        reset_request_context(tokens)
