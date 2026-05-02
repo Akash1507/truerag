@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import BackgroundTasks
@@ -24,6 +24,7 @@ def _make_agent(top_k: int = 5) -> AgentDocument:
         top_k=top_k,
         semantic_cache_enabled=False,
         semantic_cache_threshold=None,
+        embedding_provider_mismatch=False,
         status="active",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -248,3 +249,90 @@ async def test_handle_query_audit_query_hash_is_sha256_of_scrubbed() -> None:
     mock_scrub.assert_called_once_with("raw pii text")
     expected_hash = hashlib.sha256("scrubbed text".encode()).hexdigest()
     assert bg.tasks[0].kwargs["query_hash"] == expected_hash
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_skips_pipeline() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    agent.semantic_cache_enabled = True
+    agent.semantic_cache_threshold = 0.9
+    bg = BackgroundTasks()
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[[0.1, 0.2]])
+    embedder_cls = MagicMock(return_value=embedder)
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.EMBEDDING_REGISTRY",
+        {"openai": embedder_cls},
+    ), patch(
+        "app.services.query_service.semantic_cache.lookup",
+        AsyncMock(return_value="cached answer"),
+    ) as cache_lookup, patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(),
+    ) as pipeline, patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
+        result = await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
+
+    assert result.answer == "cached answer"
+    pipeline.assert_not_called()
+    cache_lookup.assert_awaited_once()
+    assert bg.tasks[0].kwargs["cache_hit"] is True
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_calls_pipeline_and_stores() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    agent.semantic_cache_enabled = True
+    agent.semantic_cache_threshold = 0.85
+    bg = BackgroundTasks()
+    embedder = AsyncMock()
+    embedder.embed = AsyncMock(return_value=[[0.1, 0.2]])
+    embedder_cls = MagicMock(return_value=embedder)
+    stub = _stub_response()
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.EMBEDDING_REGISTRY",
+        {"openai": embedder_cls},
+    ), patch(
+        "app.services.query_service.semantic_cache.lookup",
+        AsyncMock(return_value=None),
+    ), patch(
+        "app.services.query_service.semantic_cache.store",
+        AsyncMock(),
+    ) as cache_store, patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=stub),
+    ) as pipeline, patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
+        result = await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
+
+    assert result == stub
+    pipeline.assert_awaited_once()
+    cache_store.assert_awaited_once()
+    assert bg.tasks[0].kwargs["cache_hit"] is False
+
+
+@pytest.mark.asyncio
+async def test_cache_disabled_skips_cache_check() -> None:
+    req = QueryRequest(query="hello", top_k=3)
+    agent = _make_agent(top_k=5)
+    agent.semantic_cache_enabled = False
+    bg = BackgroundTasks()
+    with patch(
+        "app.services.query_service.agent_service.get_agent",
+        AsyncMock(return_value=agent),
+    ), patch(
+        "app.services.query_service.semantic_cache.lookup",
+        AsyncMock(),
+    ) as cache_lookup, patch(
+        "app.services.query_service.run_query_pipeline",
+        AsyncMock(return_value=_stub_response()),
+    ), patch("app.services.query_service.audit_service.write_audit_log", AsyncMock()):
+        await query_service.handle_query("agent-1", "tenant-1", "hash", req, bg)
+
+    cache_lookup.assert_not_called()

@@ -1,6 +1,6 @@
 # Story 8.1: Qdrant Vector Store Backend
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -27,42 +27,42 @@ Then all assertions pass — the same test suite that validates `PgVectorStore` 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add Qdrant config to `app/core/config.py`** (AC: 1)
-  - [ ] Add `qdrant_api_key_secret_name: str = "truerag/qdrant/api_key"` to `Settings`
-  - [ ] Add `qdrant_url: str = "https://your-cluster.qdrant.io"` to `Settings` (populated via env var `QDRANT_URL`)
+- [x] **Task 1: Add Qdrant config to `app/core/config.py`** (AC: 1)
+  - [x] Add `qdrant_api_key_secret_name: str = "truerag/qdrant/api_key"` to `Settings`
+  - [x] Add `qdrant_url: str = "https://your-cluster.qdrant.io"` to `Settings` (populated via env var `QDRANT_URL`)
 
-- [ ] **Task 2: Implement `app/providers/vector_stores/qdrant.py`** (AC: 1, 2)
-  - [ ] Class `QdrantVectorStore(VectorStore)` — implements full abstract interface
-  - [ ] `__init__(self) -> None`: store `self._settings = get_settings()`; Qdrant client created lazily in `_get_client()`
-  - [ ] `_get_client()`: call `get_secret(settings.qdrant_api_key_secret_name)` + construct `AsyncQdrantClient(url=settings.qdrant_url, api_key=key)`
-  - [ ] Use **`qdrant-client`** library — the async client `qdrant_client.async_qdrant_client.AsyncQdrantClient`
-  - [ ] Namespace = Qdrant collection name: `{tenant_id}_{agent_id}` (from `namespace` param — never construct it inside the provider)
-  - [ ] `upsert(namespace, vectors)`: call `client.upsert(collection_name=namespace, points=[...])` using `qdrant_client.models.PointStruct`; create collection if it does not exist via `client.recreate_collection` or `create_collection`; vector size from `len(vectors[0].vector)`; wrap in `ProviderUnavailableError` on any exception
-  - [ ] `query(namespace, vector, top_k, filters)`: call `client.search(collection_name=namespace, query_vector=vector, limit=top_k, query_filter=...)` — map `filters` dict to Qdrant `Filter(must=[FieldCondition(key=k, match=MatchValue(value=v))])` format; check each result's `payload["namespace"] == namespace` — raise `NamespaceViolationError` if mismatch; return `list[VectorResult]`
-  - [ ] `delete_namespace(namespace)`: call `client.delete_collection(collection_name=namespace)`; wrap exceptions in `ProviderUnavailableError`
-  - [ ] `health()`: call `client.get_collections()` — return `True` on success, `False` on exception
-  - [ ] Store `namespace` in point payload so namespace isolation check can verify it on read
+- [x] **Task 2: Implement `app/providers/vector_stores/qdrant.py`** (AC: 1, 2)
+  - [x] Class `QdrantVectorStore(VectorStore)` — implements full abstract interface
+  - [x] `__init__(self) -> None`: store `self._settings = get_settings()`; Qdrant client created lazily in `_get_client()`
+  - [x] `_get_client()`: call `get_secret(settings.qdrant_api_key_secret_name)` + construct `AsyncQdrantClient(url=settings.qdrant_url, api_key=key)`
+  - [x] Use **`qdrant-client`** library — the async client `qdrant_client.async_qdrant_client.AsyncQdrantClient`
+  - [x] Namespace = Qdrant collection name: `{tenant_id}_{agent_id}` (from `namespace` param — never construct it inside the provider)
+  - [x] `upsert(namespace, vectors)`: call `client.upsert(collection_name=namespace, points=[...])` using `qdrant_client.models.PointStruct`; create collection if it does not exist via `client.recreate_collection` or `create_collection`; vector size from `len(vectors[0].vector)`; wrap in `ProviderUnavailableError` on any exception
+  - [x] `query(namespace, vector, top_k, filters)`: call `client.search(collection_name=namespace, query_vector=vector, limit=top_k, query_filter=...)` — map `filters` dict to Qdrant `Filter(must=[FieldCondition(key=k, match=MatchValue(value=v))])` format; check each result's `payload["namespace"] == namespace` — raise `NamespaceViolationError` if mismatch; return `list[VectorResult]`
+  - [x] `delete_namespace(namespace)`: call `client.delete_collection(collection_name=namespace)`; wrap exceptions in `ProviderUnavailableError`
+  - [x] `health()`: call `client.get_collections()` — return `True` on success, `False` on exception
+  - [x] Store `namespace` in point payload so namespace isolation check can verify it on read
 
-- [ ] **Task 3: Register in `app/providers/registry.py`** (AC: 3)
-  - [ ] Import `QdrantVectorStore` from `app.providers.vector_stores.qdrant`
-  - [ ] Add `"qdrant": QdrantVectorStore` to `VECTOR_STORE_REGISTRY`
+- [x] **Task 3: Register in `app/providers/registry.py`** (AC: 3)
+  - [x] Import `QdrantVectorStore` from `app.providers.vector_stores.qdrant`
+  - [x] Add `"qdrant": QdrantVectorStore` to `VECTOR_STORE_REGISTRY`
 
-- [ ] **Task 4: Extend backend-agnostic VectorStore contract test suite** (AC: 3)
-  - [ ] File: `tests/providers/vector_stores/test_vector_store_contract.py` (already exists — add Qdrant parametrization)
-  - [ ] Add `QdrantVectorStore` to the parametrize list
-  - [ ] Mark Qdrant tests as `@pytest.mark.integration` (require live Qdrant instance or `qdrant/qdrant` Docker image)
-  - [ ] Mock the async Qdrant client in unit tests using `pytest-mock` — patch `qdrant_client.async_qdrant_client.AsyncQdrantClient`
-  - [ ] Unit test: `test_qdrant_upsert_calls_client_upsert` — verify `client.upsert()` called with correct collection name
-  - [ ] Unit test: `test_qdrant_query_namespace_violation` — simulate payload with wrong namespace → assert `NamespaceViolationError` raised
-  - [ ] Unit test: `test_qdrant_health_returns_false_on_exception` — simulate `get_collections()` exception → assert `health()` returns `False`
+- [x] **Task 4: Extend backend-agnostic VectorStore contract test suite** (AC: 3)
+  - [x] File: `tests/providers/vector_stores/test_vector_store_contract.py` (already exists — add Qdrant parametrization)
+  - [x] Add `QdrantVectorStore` to the parametrize list
+  - [x] Mark Qdrant tests as `@pytest.mark.integration` (require live Qdrant instance or `qdrant/qdrant` Docker image)
+  - [x] Mock the async Qdrant client in unit tests using `pytest-mock` — patch `qdrant_client.async_qdrant_client.AsyncQdrantClient`
+  - [x] Unit test: `test_qdrant_upsert_calls_client_upsert` — verify `client.upsert()` called with correct collection name
+  - [x] Unit test: `test_qdrant_query_namespace_violation` — simulate payload with wrong namespace → assert `NamespaceViolationError` raised
+  - [x] Unit test: `test_qdrant_health_returns_false_on_exception` — simulate `get_collections()` exception → assert `health()` returns `False`
 
-- [ ] **Task 5: Add ADR for Qdrant backend** (AC: 1)
-  - [ ] Create `docs/adrs/adr-011-qdrant-vector-store-backend.md`
-  - [ ] Document: Qdrant Cloud managed, collection-per-namespace, async client, namespace stored in payload for isolation check
+- [x] **Task 5: Add ADR for Qdrant backend** (AC: 1)
+  - [x] Create `docs/adrs/adr-011-qdrant-vector-store-backend.md`
+  - [x] Document: Qdrant Cloud managed, collection-per-namespace, async client, namespace stored in payload for isolation check
 
-- [ ] **Task 6: Run regression tests** (AC: 3)
-  - [ ] `pytest tests/ -x -v --ignore=tests/integration`
-  - [ ] `mypy --strict app/providers/vector_stores/qdrant.py`
+- [x] **Task 6: Run regression tests** (AC: 3)
+  - [x] `pytest tests/ -x -v --ignore=tests/integration`
+  - [x] `mypy --strict app/providers/vector_stores/qdrant.py`
 
 ## Dev Notes
 
@@ -178,7 +178,28 @@ requirements.txt                 MODIFY: add qdrant-client>=1.7.0
 claude-sonnet-4-6
 
 ### Debug Log References
+- `.venv/bin/pytest tests/providers/vector_stores/test_vector_store_contract.py -q`
+- `.venv/bin/mypy --strict app/providers/vector_stores/qdrant.py`
+- `.venv/bin/pytest tests/ -x -v --ignore=tests/integration`
 
 ### Completion Notes List
+- Implemented `QdrantVectorStore` with lazy secret-backed client creation, collection-per-namespace upsert/query/delete, namespace payload verification, and provider error wrapping.
+- Added Qdrant config keys and registry wiring, including vector-store package export updates.
+- Extended vector-store contract coverage to include Qdrant backend plus dedicated Qdrant unit assertions.
+- Added ADR documenting Qdrant backend decision and updated dependency/test baseline needed for the new backend.
 
 ### File List
+- app/core/config.py
+- app/providers/vector_stores/qdrant.py
+- app/providers/vector_stores/__init__.py
+- app/providers/registry.py
+- tests/providers/vector_stores/test_vector_store_contract.py
+- tests/providers/test_registry.py
+- tests/core/test_dependencies.py
+- docs/adrs/adr-011-qdrant-vector-store-backend.md
+- requirements.txt
+- requirements-dev.txt
+- pyproject.toml
+
+### Change Log
+- 2026-05-03: Implemented Story 8.1 Qdrant vector store backend, added tests/ADR, and completed regression + typing validation.

@@ -1,6 +1,6 @@
 # Story 8.4: OpenAI & AWS Bedrock LLM Providers
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -27,61 +27,61 @@ Then all assertions pass with only the provider backend swapped
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add OpenAI LLM config to `app/core/config.py`** (AC: 1)
-  - [ ] `openai_api_key_secret_name` ALREADY EXISTS in `Settings` (used by `OpenAIEmbedder`) — reuse it
-  - [ ] Add `openai_llm_model: str = "gpt-4o-mini"` to `Settings`
+- [x] **Task 1: Add OpenAI LLM config to `app/core/config.py`** (AC: 1)
+  - [x] `openai_api_key_secret_name` ALREADY EXISTS in `Settings` (used by `OpenAIEmbedder`) — reuse it
+  - [x] Add `openai_llm_model: str = "gpt-4o-mini"` to `Settings`
 
-- [ ] **Task 2: Implement `app/providers/llm/openai.py`** (AC: 1)
-  - [ ] Class `OpenAILLMProvider(LLMProvider)` — implements `generate(prompt, context) -> str`
-  - [ ] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
-  - [ ] Use `openai` SDK (already a dependency for `OpenAIEmbedder`) — `from openai import AsyncOpenAI`
-  - [ ] `generate(prompt, context)`: fetch API key via `get_secret(settings.openai_api_key_secret_name)` → create `AsyncOpenAI(api_key=key)` → call `client.chat.completions.create(model=settings.openai_llm_model, messages=[{"role": "system", "content": "..."}, {"role": "user", "content": full_prompt}])`
-  - [ ] `full_prompt`: prepend context chunks as formatted text + prompt (same pattern as Anthropic provider)
-  - [ ] `@retry(max_attempts=3, backoff_factor=2, retry_on=(openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError))` on inner `_generate_with_retry` method
-  - [ ] Extract text: `response.choices[0].message.content` — raise `ProviderUnavailableError` if None/empty
-  - [ ] Close client in `finally` block: `await client.close()`
-  - [ ] Wrap all OpenAI exceptions as `ProviderUnavailableError`
+- [x] **Task 2: Implement `app/providers/llm/openai.py`** (AC: 1)
+  - [x] Class `OpenAILLMProvider(LLMProvider)` — implements `generate(prompt, context) -> str`
+  - [x] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
+  - [x] Use `openai` SDK (already a dependency for `OpenAIEmbedder`) — `from openai import AsyncOpenAI`
+  - [x] `generate(prompt, context)`: fetch API key via `get_secret(settings.openai_api_key_secret_name)` → create `AsyncOpenAI(api_key=key)` → call `client.chat.completions.create(model=settings.openai_llm_model, messages=[{"role": "system", "content": "..."}, {"role": "user", "content": full_prompt}])`
+  - [x] `full_prompt`: prepend context chunks as formatted text + prompt (same pattern as Anthropic provider)
+  - [x] `@retry(max_attempts=3, backoff_factor=2, retry_on=(openai.RateLimitError, openai.APITimeoutError, openai.InternalServerError))` on inner `_generate_with_retry` method
+  - [x] Extract text: `response.choices[0].message.content` — raise `ProviderUnavailableError` if None/empty
+  - [x] Close client in `finally` block: `await client.close()`
+  - [x] Wrap all OpenAI exceptions as `ProviderUnavailableError`
 
-- [ ] **Task 3: Add Bedrock LLM config to `app/core/config.py`** (AC: 2)
-  - [ ] Add `bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"` to `Settings`
-  - [ ] Note: Bedrock uses AWS credentials from the execution environment — no API key secret needed beyond what `aioboto3` handles
+- [x] **Task 3: Add Bedrock LLM config to `app/core/config.py`** (AC: 2)
+  - [x] Add `bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"` to `Settings`
+  - [x] Note: Bedrock uses AWS credentials from the execution environment — no API key secret needed beyond what `aioboto3` handles
 
-- [ ] **Task 4: Implement `app/providers/llm/bedrock.py`** (AC: 2)
-  - [ ] Class `BedrockLLMProvider(LLMProvider)` — implements `generate(prompt, context) -> str`
-  - [ ] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
-  - [ ] Use `aioboto3` — `session.client("bedrock-runtime", region_name=settings.aws_region)` as async context manager
-  - [ ] `generate(prompt, context)`: build `full_prompt` with context + prompt → call `client.invoke_model(modelId=settings.bedrock_llm_model_id, body=json.dumps({"prompt": full_prompt, "max_tokens": 1024}), contentType="application/json")`
-  - [ ] Parse response: `body["completion"]` (Anthropic models via Bedrock) or model-specific field — check model family and parse accordingly
-  - [ ] Wrap `botocore.exceptions.ClientError` as `ProviderUnavailableError` — include status code
-  - [ ] Apply `@retry` on retryable `ClientError` (throttling, service unavailable)
-  - [ ] Default to AWS session from constructor; if None, create new `aioboto3.Session()`
+- [x] **Task 4: Implement `app/providers/llm/bedrock.py`** (AC: 2)
+  - [x] Class `BedrockLLMProvider(LLMProvider)` — implements `generate(prompt, context) -> str`
+  - [x] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
+  - [x] Use `aioboto3` — `session.client("bedrock-runtime", region_name=settings.aws_region)` as async context manager
+  - [x] `generate(prompt, context)`: build `full_prompt` with context + prompt → call `client.invoke_model(modelId=settings.bedrock_llm_model_id, body=json.dumps({"prompt": full_prompt, "max_tokens": 1024}), contentType="application/json")`
+  - [x] Parse response: `body["completion"]` (Anthropic models via Bedrock) or model-specific field — check model family and parse accordingly
+  - [x] Wrap `botocore.exceptions.ClientError` as `ProviderUnavailableError` — include status code
+  - [x] Apply `@retry` on retryable `ClientError` (throttling, service unavailable)
+  - [x] Default to AWS session from constructor; if None, create new `aioboto3.Session()`
 
-- [ ] **Task 5: Register both providers in `app/providers/registry.py`** (AC: 3)
-  - [ ] Import `OpenAILLMProvider` from `app.providers.llm.openai`
-  - [ ] Import `BedrockLLMProvider` from `app.providers.llm.bedrock`
-  - [ ] Add `"openai": OpenAILLMProvider` to `LLM_REGISTRY`
-  - [ ] Add `"bedrock": BedrockLLMProvider` to `LLM_REGISTRY`
+- [x] **Task 5: Register both providers in `app/providers/registry.py`** (AC: 3)
+  - [x] Import `OpenAILLMProvider` from `app.providers.llm.openai`
+  - [x] Import `BedrockLLMProvider` from `app.providers.llm.bedrock`
+  - [x] Add `"openai": OpenAILLMProvider` to `LLM_REGISTRY`
+  - [x] Add `"bedrock": BedrockLLMProvider` to `LLM_REGISTRY`
 
-- [ ] **Task 6: Write backend-agnostic LLM provider test suite** (AC: 3)
-  - [ ] Create or extend `tests/providers/test_llm_provider_contract.py`
-  - [ ] Parametrize over `AnthropicLLMProvider`, `OpenAILLMProvider`, `BedrockLLMProvider` (all with mocked backends)
-  - [ ] Contract tests:
+- [x] **Task 6: Write backend-agnostic LLM provider test suite** (AC: 3)
+  - [x] Create or extend `tests/providers/test_llm_provider_contract.py`
+  - [x] Parametrize over `AnthropicLLMProvider`, `OpenAILLMProvider`, `BedrockLLMProvider` (all with mocked backends)
+  - [x] Contract tests:
     - `generate(prompt, context=[])` → returns non-empty string
     - `generate(prompt, context=[chunk])` → returns non-empty string
     - On simulated transient error → raises `ProviderUnavailableError`
-  - [ ] Mock clients: patch `openai.AsyncOpenAI`, `anthropic.AsyncAnthropic`, `aioboto3.Session.client`
-  - [ ] Unit test: `test_openai_llm_calls_chat_completions` — verify correct model, message format
-  - [ ] Unit test: `test_bedrock_llm_calls_invoke_model` — verify correct `modelId`, body format
-  - [ ] Unit test: `test_openai_llm_retries_on_rate_limit` — assert retry called 3x
-  - [ ] Unit test: `test_bedrock_llm_wraps_client_error` — `ClientError` → `ProviderUnavailableError`
+  - [x] Mock clients: patch `openai.AsyncOpenAI`, `anthropic.AsyncAnthropic`, `aioboto3.Session.client`
+  - [x] Unit test: `test_openai_llm_calls_chat_completions` — verify correct model, message format
+  - [x] Unit test: `test_bedrock_llm_calls_invoke_model` — verify correct `modelId`, body format
+  - [x] Unit test: `test_openai_llm_retries_on_rate_limit` — assert retry called 3x
+  - [x] Unit test: `test_bedrock_llm_wraps_client_error` — `ClientError` → `ProviderUnavailableError`
 
-- [ ] **Task 7: Add ADR for new LLM providers** (AC: 1, 2)
-  - [ ] Create `docs/adrs/adr-014-openai-bedrock-llm-providers.md`
-  - [ ] Document: model selection, context injection pattern, Bedrock model ID conventions
+- [x] **Task 7: Add ADR for new LLM providers** (AC: 1, 2)
+  - [x] Create `docs/adrs/adr-014-openai-bedrock-llm-providers.md`
+  - [x] Document: model selection, context injection pattern, Bedrock model ID conventions
 
-- [ ] **Task 8: Run regression tests** (AC: 3)
-  - [ ] `pytest tests/ -x -v --ignore=tests/integration`
-  - [ ] `mypy --strict app/providers/llm/openai.py app/providers/llm/bedrock.py`
+- [x] **Task 8: Run regression tests** (AC: 3)
+  - [x] `pytest tests/ -x -v --ignore=tests/integration`
+  - [x] `mypy --strict app/providers/llm/openai.py app/providers/llm/bedrock.py`
 
 ## Dev Notes
 
@@ -214,7 +214,29 @@ docs/adrs/
 claude-sonnet-4-6
 
 ### Debug Log References
+- `.venv/bin/pytest -q tests/providers/test_llm_provider_contract.py`
+- `.venv/bin/pytest -q tests/providers/llm/test_anthropic.py tests/providers/test_llm_provider_contract.py tests/providers/test_registry.py tests/core/test_dependencies.py`
+- `.venv/bin/mypy --strict app/providers/llm/openai.py app/providers/llm/bedrock.py`
+- `.venv/bin/pytest tests/ -x -v --ignore=tests/integration`
 
 ### Completion Notes List
+- Added `OpenAILLMProvider` with OpenAI chat completions integration, transient retry behavior, and normalized provider error handling.
+- Added `BedrockLLMProvider` with Bedrock runtime invocation, Anthropic-style payload parsing, retryable `ClientError` handling, and normalized provider errors.
+- Added config fields `openai_llm_model` and `bedrock_llm_model_id`, and registered `openai`/`bedrock` in `LLM_REGISTRY`.
+- Added backend-agnostic LLM provider contract tests covering Anthropic/OpenAI/Bedrock and provider-specific behavior checks.
+- Added ADR documenting model selection and Bedrock payload conventions.
 
 ### File List
+- app/core/config.py
+- app/providers/llm/openai.py
+- app/providers/llm/bedrock.py
+- app/providers/llm/__init__.py
+- app/providers/registry.py
+- tests/providers/test_llm_provider_contract.py
+- tests/providers/test_registry.py
+- tests/core/test_dependencies.py
+- docs/adrs/adr-014-openai-bedrock-llm-providers.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+### Change Log
+- 2026-05-03: Implemented Story 8.4 OpenAI and Bedrock LLM providers with registry/config integration, contract tests, ADR, and full regression validation.

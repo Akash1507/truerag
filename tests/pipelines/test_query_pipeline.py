@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.errors import ProviderUnavailableError
+from app.core.errors import EmbeddingModelMismatchError, ProviderUnavailableError
 from app.models.agent import AgentDocument
 from app.models.chunk import ChunkMetadata, VectorResult
 from app.models.query import Citation
@@ -37,6 +37,7 @@ def _make_agent() -> AgentDocument:
         top_k=5,
         semantic_cache_enabled=False,
         semantic_cache_threshold=None,
+        embedding_provider_mismatch=False,
         status="active",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -194,6 +195,36 @@ async def test_pipeline_unregistered_embedding_provider_raises_503() -> None:
 
     with pytest.raises(ProviderUnavailableError):
         await run_query_pipeline("my query", 5, agent)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_blocks_query_when_embedding_provider_mismatch_true() -> None:
+    agent = _make_agent()
+    agent.embedding_provider_mismatch = True
+
+    with pytest.raises(EmbeddingModelMismatchError):
+        await run_query_pipeline("my query", 5, agent)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_allows_query_when_embedding_provider_mismatch_false() -> None:
+    agent = _make_agent()
+    agent.embedding_provider_mismatch = False
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=[_make_vector_result()])
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
+    ):
+        response = await run_query_pipeline("my query", 5, agent)
+
+    assert response.answer == "Generated answer"
 
 
 @pytest.mark.asyncio

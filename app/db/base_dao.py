@@ -1,6 +1,7 @@
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 from beanie import Document
+from pymongo import ASCENDING, DESCENDING
 
 T = TypeVar("T", bound=Document)
 
@@ -20,7 +21,10 @@ class BaseDAO(Generic[T]):
     ) -> list[T]:
         cursor = self._model.find(query)
         if sort:
-            cursor = cursor.sort(sort)
+            normalized_sort: list[tuple[str, int]] = []
+            for field, direction in sort:
+                normalized_sort.append((field, ASCENDING if direction >= 0 else DESCENDING))
+            cursor = cursor.sort(cast(Any, normalized_sort))
         if limit is not None:
             cursor = cursor.limit(limit)
         return await cursor.to_list()

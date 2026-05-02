@@ -1,6 +1,3 @@
-async def invalidate(agent_id: str) -> None:
-    """No-op stub. Epic 8 replaces this body with pgvector cache invalidation.
+from app.providers.cache.semantic_cache import cleanup_expired_entries, invalidate, lookup, store
 
-    Call sites: await semantic_cache.invalidate(agent_id)
-    """
-    pass
+__all__ = ["lookup", "store", "invalidate", "cleanup_expired_entries"]

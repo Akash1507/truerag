@@ -1,4 +1,4 @@
-import aioboto3  # type: ignore[import-untyped]
+import aioboto3
 from datetime import UTC, datetime
 from decimal import Decimal
 

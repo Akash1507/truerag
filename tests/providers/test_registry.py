@@ -10,7 +10,13 @@ from app.providers.rerankers.cohere import CohereReranker
 from app.providers.rerankers.cross_encoder import CrossEncoderReranker
 from app.providers.rerankers.passthrough import PassthroughReranker
 from app.providers.llm.anthropic import AnthropicLLMProvider
+from app.providers.embedding.bedrock import BedrockEmbedder
+from app.providers.embedding.cohere import CohereEmbedder
+from app.providers.llm.bedrock import BedrockLLMProvider
+from app.providers.llm.openai import OpenAILLMProvider
+from app.providers.vector_stores.pinecone import PineconeVectorStore
 from app.providers.vector_stores.pgvector import PgVectorStore
+from app.providers.vector_stores.qdrant import QdrantVectorStore
 
 
 def test_all_five_registries_importable() -> None:
@@ -32,10 +38,20 @@ def test_none_key_returns_passthrough_instance() -> None:
 
 
 def test_registry_entries_for_current_epic() -> None:
-    """Current stories register pgvector/openai/anthropic providers."""
-    assert VECTOR_STORE_REGISTRY == {"pgvector": PgVectorStore}
+    """Current stories register pgvector/qdrant/pinecone and multi-embed providers."""
+    assert VECTOR_STORE_REGISTRY == {
+        "pgvector": PgVectorStore,
+        "qdrant": QdrantVectorStore,
+        "pinecone": PineconeVectorStore,
+    }
+    assert EMBEDDING_REGISTRY["cohere"] is CohereEmbedder
+    assert EMBEDDING_REGISTRY["bedrock"] is BedrockEmbedder
     assert "openai" in EMBEDDING_REGISTRY
-    assert LLM_REGISTRY == {"anthropic": AnthropicLLMProvider}
+    assert LLM_REGISTRY == {
+        "anthropic": AnthropicLLMProvider,
+        "openai": OpenAILLMProvider,
+        "bedrock": BedrockLLMProvider,
+    }
 
 
 def test_chunking_registry_has_fixed_size() -> None:

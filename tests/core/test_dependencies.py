@@ -22,8 +22,8 @@ def test_get_reranker_unknown_raises_provider_unavailable() -> None:
 
 
 def test_get_vector_store_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown vector store provider.*qdrant"):
-        get_vector_store("qdrant")
+    with pytest.raises(ProviderUnavailableError, match="Unknown vector store provider.*unknown"):
+        get_vector_store("unknown")
 
 
 def test_get_chunker_unknown_raises_provider_unavailable() -> None:
@@ -32,10 +32,10 @@ def test_get_chunker_unknown_raises_provider_unavailable() -> None:
 
 
 def test_get_embedder_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown embedding provider.*cohere"):
-        get_embedder("cohere")
+    with pytest.raises(ProviderUnavailableError, match="Unknown embedding provider.*unknown"):
+        get_embedder("unknown")
 
 
 def test_get_llm_provider_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown LLM provider.*bedrock"):
-        get_llm_provider("bedrock")
+    with pytest.raises(ProviderUnavailableError, match="Unknown LLM provider.*unknown"):
+        get_llm_provider("unknown")

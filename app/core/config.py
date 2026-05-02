@@ -18,16 +18,26 @@ class Settings(BaseSettings):
 
     mongodb_secret_name: str = "truerag/mongodb/uri"
     pgvector_secret_name: str = "truerag/pgvector/dsn"
+    qdrant_api_key_secret_name: str = "truerag/qdrant/api_key"
+    pinecone_api_key_secret_name: str = "truerag/pinecone/api_key"
+    cohere_api_key_secret_name: str = "truerag/cohere/api_key"
     openai_api_key_secret_name: str = "truerag/openai/api_key"
     anthropic_api_key_secret_name: str = "truerag/anthropic/api_key"
 
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "truerag"
     pgvector_dsn: str = "postgresql://postgres:postgres@localhost:5432/truerag"
+    qdrant_url: str = "https://your-cluster.qdrant.io"
+    pinecone_index_name: str = "truerag"
+    cohere_embedding_model: str = "embed-english-v3.0"
+    bedrock_embedding_model_id: str = "amazon.titan-embed-text-v1"
+    openai_llm_model: str = "gpt-4o-mini"
+    bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     aws_endpoint_url: str | None = None
     sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"
     s3_document_bucket: str = "truerag-documents"
     dynamodb_audit_table: str = "truerag-audit-log"
+    semantic_cache_ttl_hours: int = 24
 
     @field_validator("log_level")
     @classmethod

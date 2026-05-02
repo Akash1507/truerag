@@ -1,6 +1,6 @@
 # Story 8.2: Pinecone Vector Store Backend
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -27,42 +27,42 @@ Then all assertions pass with only the backend swapped
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add Pinecone config to `app/core/config.py`** (AC: 1)
-  - [ ] Add `pinecone_api_key_secret_name: str = "truerag/pinecone/api_key"` to `Settings`
-  - [ ] Add `pinecone_index_name: str = "truerag"` to `Settings` (one index, namespaces for isolation)
+- [x] **Task 1: Add Pinecone config to `app/core/config.py`** (AC: 1)
+  - [x] Add `pinecone_api_key_secret_name: str = "truerag/pinecone/api_key"` to `Settings`
+  - [x] Add `pinecone_index_name: str = "truerag"` to `Settings` (one index, namespaces for isolation)
 
-- [ ] **Task 2: Implement `app/providers/vector_stores/pinecone.py`** (AC: 1, 2)
-  - [ ] Class `PineconeVectorStore(VectorStore)` — implements full abstract interface
-  - [ ] `__init__(self) -> None`: store `self._settings = get_settings()`; Pinecone client created lazily in `_get_index()`
-  - [ ] `_get_index()`: call `get_secret(settings.pinecone_api_key_secret_name)` → construct `Pinecone(api_key=key)` → return `pc.Index(settings.pinecone_index_name)`
-  - [ ] Use **`pinecone-client`** (package name `pinecone`) — `from pinecone import Pinecone`
-  - [ ] **Pinecone namespace strategy**: Use Pinecone's native namespace feature — pass `namespace=namespace` on all upsert/query calls. The Pinecone index is shared; namespaces partition it per agent.
-  - [ ] `upsert(namespace, vectors)`: call `index.upsert(vectors=[...], namespace=namespace)` — map `VectorRecord` to `(id, vector, metadata)` tuples where metadata includes `text`, `namespace`, and `ChunkMetadata` fields; wrap exceptions in `ProviderUnavailableError`
-  - [ ] `query(namespace, vector, top_k, filters)`: call `index.query(vector=vector, top_k=top_k, namespace=namespace, filter=pinecone_filter, include_metadata=True)`; verify each result's `metadata["namespace"] == namespace` — raise `NamespaceViolationError` on mismatch; reconstruct `VectorResult` from match metadata; wrap exceptions
-  - [ ] `delete_namespace(namespace)`: call `index.delete(delete_all=True, namespace=namespace)`; wrap exceptions
-  - [ ] `health()`: call `index.describe_index_stats()` — return `True` on success, `False` on exception
-  - [ ] **Filters mapping**: Pinecone uses `{"key": {"$eq": "value"}}` format — map `dict[str, str]` filters accordingly
+- [x] **Task 2: Implement `app/providers/vector_stores/pinecone.py`** (AC: 1, 2)
+  - [x] Class `PineconeVectorStore(VectorStore)` — implements full abstract interface
+  - [x] `__init__(self) -> None`: store `self._settings = get_settings()`; Pinecone client created lazily in `_get_index()`
+  - [x] `_get_index()`: call `get_secret(settings.pinecone_api_key_secret_name)` → construct `Pinecone(api_key=key)` → return `pc.Index(settings.pinecone_index_name)`
+  - [x] Use **`pinecone-client`** (package name `pinecone`) — `from pinecone import Pinecone`
+  - [x] **Pinecone namespace strategy**: Use Pinecone's native namespace feature — pass `namespace=namespace` on all upsert/query calls. The Pinecone index is shared; namespaces partition it per agent.
+  - [x] `upsert(namespace, vectors)`: call `index.upsert(vectors=[...], namespace=namespace)` — map `VectorRecord` to `(id, vector, metadata)` tuples where metadata includes `text`, `namespace`, and `ChunkMetadata` fields; wrap exceptions in `ProviderUnavailableError`
+  - [x] `query(namespace, vector, top_k, filters)`: call `index.query(vector=vector, top_k=top_k, namespace=namespace, filter=pinecone_filter, include_metadata=True)`; verify each result's `metadata["namespace"] == namespace` — raise `NamespaceViolationError` on mismatch; reconstruct `VectorResult` from match metadata; wrap exceptions
+  - [x] `delete_namespace(namespace)`: call `index.delete(delete_all=True, namespace=namespace)`; wrap exceptions
+  - [x] `health()`: call `index.describe_index_stats()` — return `True` on success, `False` on exception
+  - [x] **Filters mapping**: Pinecone uses `{"key": {"$eq": "value"}}` format — map `dict[str, str]` filters accordingly
 
-- [ ] **Task 3: Register in `app/providers/registry.py`** (AC: 3)
-  - [ ] Import `PineconeVectorStore` from `app.providers.vector_stores.pinecone`
-  - [ ] Add `"pinecone": PineconeVectorStore` to `VECTOR_STORE_REGISTRY`
+- [x] **Task 3: Register in `app/providers/registry.py`** (AC: 3)
+  - [x] Import `PineconeVectorStore` from `app.providers.vector_stores.pinecone`
+  - [x] Add `"pinecone": PineconeVectorStore` to `VECTOR_STORE_REGISTRY`
 
-- [ ] **Task 4: Extend backend-agnostic VectorStore contract test suite** (AC: 3)
-  - [ ] File: `tests/providers/vector_stores/test_vector_store_contract.py` (already exists — add Pinecone)
-  - [ ] Add `PineconeVectorStore` to the parametrize list
-  - [ ] Mark Pinecone tests as `@pytest.mark.integration` (require live Pinecone or Localstack equivalent)
-  - [ ] Mock the Pinecone client in unit tests — patch `pinecone.Pinecone`
-  - [ ] Unit test: `test_pinecone_upsert_passes_namespace` — verify `index.upsert()` called with correct `namespace=`
-  - [ ] Unit test: `test_pinecone_query_namespace_violation` — metadata["namespace"] mismatch → `NamespaceViolationError`
-  - [ ] Unit test: `test_pinecone_health_returns_false_on_exception` — simulate exception → `False`
+- [x] **Task 4: Extend backend-agnostic VectorStore contract test suite** (AC: 3)
+  - [x] File: `tests/providers/vector_stores/test_vector_store_contract.py` (already exists — add Pinecone)
+  - [x] Add `PineconeVectorStore` to the parametrize list
+  - [x] Mark Pinecone tests as `@pytest.mark.integration` (require live Pinecone or Localstack equivalent)
+  - [x] Mock the Pinecone client in unit tests — patch `pinecone.Pinecone`
+  - [x] Unit test: `test_pinecone_upsert_passes_namespace` — verify `index.upsert()` called with correct `namespace=`
+  - [x] Unit test: `test_pinecone_query_namespace_violation` — metadata["namespace"] mismatch → `NamespaceViolationError`
+  - [x] Unit test: `test_pinecone_health_returns_false_on_exception` — simulate exception → `False`
 
-- [ ] **Task 5: Add ADR for Pinecone backend** (AC: 1)
-  - [ ] Create `docs/adrs/adr-012-pinecone-vector-store-backend.md`
-  - [ ] Document: shared index + namespace-per-agent, serverless model, native Pinecone namespaces for isolation
+- [x] **Task 5: Add ADR for Pinecone backend** (AC: 1)
+  - [x] Create `docs/adrs/adr-012-pinecone-vector-store-backend.md`
+  - [x] Document: shared index + namespace-per-agent, serverless model, native Pinecone namespaces for isolation
 
-- [ ] **Task 6: Run regression tests** (AC: 3)
-  - [ ] `pytest tests/ -x -v --ignore=tests/integration`
-  - [ ] `mypy --strict app/providers/vector_stores/pinecone.py`
+- [x] **Task 6: Run regression tests** (AC: 3)
+  - [x] `pytest tests/ -x -v --ignore=tests/integration`
+  - [x] `mypy --strict app/providers/vector_stores/pinecone.py`
 
 ## Dev Notes
 
@@ -180,7 +180,26 @@ requirements.txt                 MODIFY: add pinecone>=3.0.0
 claude-sonnet-4-6
 
 ### Debug Log References
+- `.venv/bin/pytest tests/providers/vector_stores/test_vector_store_contract.py -q`
+- `.venv/bin/mypy --strict app/providers/vector_stores/pinecone.py`
+- `.venv/bin/pytest tests/ -x -v --ignore=tests/integration`
 
 ### Completion Notes List
+- Added Pinecone settings and implemented `PineconeVectorStore` with lazy secret-backed index initialization and namespace-scoped operations via Pinecone namespaces.
+- Added namespace verification on query results and consistent `ProviderUnavailableError` wrapping across upsert/query/delete.
+- Extended backend-agnostic vector store contract tests to include Pinecone and added Pinecone-specific unit checks for namespace behavior and health fallback.
+- Documented the Pinecone backend decision in ADR-012 and added `pinecone` dependency wiring.
 
 ### File List
+- app/core/config.py
+- app/providers/vector_stores/pinecone.py
+- app/providers/vector_stores/__init__.py
+- app/providers/registry.py
+- tests/providers/vector_stores/test_vector_store_contract.py
+- tests/providers/test_registry.py
+- requirements.txt
+- pyproject.toml
+- docs/adrs/adr-012-pinecone-vector-store-backend.md
+
+### Change Log
+- 2026-05-03: Implemented Story 8.2 Pinecone vector store backend with contract tests, registry/config wiring, and regression validation.

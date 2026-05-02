@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-import aioboto3  # type: ignore[import-untyped]
+import aioboto3
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
@@ -213,6 +213,7 @@ async def update_agent_config(
                     f"embedding_provider updated from '{old_provider}' to '{new_provider}'. "
                     f"Existing chunks require re-embedding before retrieval quality is reliable."
                 )
+                update_dict["embedding_provider_mismatch"] = True
             if "vector_store" in changed_mismatch:
                 old_store = doc.vector_store
                 new_store = str(update_dict["vector_store"])

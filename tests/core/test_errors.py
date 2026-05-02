@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.errors import (
+    EmbeddingModelMismatchError,
     ErrorCode,
     IngestionError,
     NamespaceViolationError,
@@ -72,6 +73,13 @@ def test_pii_detected_error_defaults() -> None:
     err = PIIDetectedError()
     assert err.http_status == 422
     assert err.code == ErrorCode.PII_DETECTED
+    assert isinstance(err, TrueRAGError)
+
+
+def test_embedding_model_mismatch_error_defaults() -> None:
+    err = EmbeddingModelMismatchError()
+    assert err.http_status == 422
+    assert err.code == ErrorCode.EMBEDDING_MODEL_MISMATCH
     assert isinstance(err, TrueRAGError)
 
 

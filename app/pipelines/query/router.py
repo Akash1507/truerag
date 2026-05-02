@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, cast
 
 from app.core.errors import ProviderUnavailableError
 from app.models.agent import AgentDocument
@@ -44,4 +44,4 @@ async def route_query(
             },
         },
     )
-    return route
+    return cast(Literal["retrieval", "direct"], route)

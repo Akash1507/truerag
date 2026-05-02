@@ -19,6 +19,7 @@ from app.models.document import DocumentRecord
 from app.models.ingestion_job import IngestionJob
 from app.models.eval import EvalDataset, EvalExperiment
 from app.models.tenant import TenantDocument
+from app.utils import semantic_cache
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
@@ -95,6 +96,18 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     # AWS (lightweight — no network I/O at session creation)
     application.state.aws_session = aioboto3.Session()
     logger.info("aws_session_created", extra={"operation": "app_startup"})
+
+    try:
+        deleted_count = await semantic_cache.cleanup_expired_entries(settings.semantic_cache_ttl_hours)
+        logger.info(
+            "semantic_cache_cleanup",
+            extra={"operation": "app_startup", "extra_data": {"deleted_count": deleted_count}},
+        )
+    except Exception as exc:
+        logger.warning(
+            "semantic_cache_cleanup_failed",
+            extra={"operation": "app_startup", "extra_data": {"error": str(exc)}},
+        )
 
     yield
 

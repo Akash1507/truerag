@@ -156,6 +156,28 @@ async def test_update_agent_config_adds_warning_when_documents_exist() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_agent_config_sets_embedding_provider_mismatch_flag_on_provider_change() -> None:
+    existing = _make_agent(embedding_provider="openai")
+    updated = _make_agent(embedding_provider="cohere", embedding_provider_mismatch=True)
+    with patch.object(
+        agent_service.agent_dao, "find_one", AsyncMock(side_effect=[existing, updated])
+    ), patch.object(agent_service.document_dao, "find_one", AsyncMock(return_value=_make_document())), patch.object(
+        agent_service.agent_dao, "update", AsyncMock()
+    ) as update_mock:
+        result, warnings = await agent_service.update_agent_config(
+            existing.agent_id,
+            TENANT_ID,
+            AgentConfigUpdateRequest(embedding_provider="cohere"),
+        )
+
+    assert result.embedding_provider == "cohere"
+    assert result.embedding_provider_mismatch is True
+    assert len(warnings) == 1
+    update_payload = update_mock.await_args.args[1]
+    assert update_payload["embedding_provider_mismatch"] is True
+
+
+@pytest.mark.asyncio
 async def test_update_agent_config_rejects_missing_threshold() -> None:
     with patch.object(
         agent_service.agent_dao, "find_one", AsyncMock(return_value=_make_agent())

@@ -33,6 +33,7 @@ class AgentDocument(Document):
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
+    embedding_provider_mismatch: bool = False
     faithfulness_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     status: str
     created_at: datetime

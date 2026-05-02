@@ -1,6 +1,6 @@
 # Story 8.3: Cohere & AWS Bedrock Embedding Providers
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -32,70 +32,70 @@ Then the mismatch warning from Story 2.5 fires (FR56) and the agent's query path
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add Cohere config to `app/core/config.py`** (AC: 1)
-  - [ ] Add `cohere_api_key_secret_name: str = "truerag/cohere/api_key"` to `Settings`
-  - [ ] Add `cohere_embedding_model: str = "embed-english-v3.0"` to `Settings`
+- [x] **Task 1: Add Cohere config to `app/core/config.py`** (AC: 1)
+  - [x] Add `cohere_api_key_secret_name: str = "truerag/cohere/api_key"` to `Settings`
+  - [x] Add `cohere_embedding_model: str = "embed-english-v3.0"` to `Settings`
 
-- [ ] **Task 2: Implement `app/providers/embedding/cohere.py`** (AC: 1)
-  - [ ] Class `CohereEmbedder(EmbeddingProvider)` — implements `embed(texts) -> list[list[float]]`
-  - [ ] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
-  - [ ] Use `cohere` Python SDK: `import cohere`; async client: `cohere.AsyncClient`
-  - [ ] `embed(texts)`: fetch API key via `get_secret(settings.cohere_api_key_secret_name)` → create client → call `client.embed(texts=texts, model=settings.cohere_embedding_model, input_type="search_document")` → return `[e for e in response.embeddings]`
-  - [ ] Apply `@retry(max_attempts=3, backoff_factor=2, retry_on=(cohere.CohereError,))` on the inner call
-  - [ ] Handle `cohere.CohereError` → raise `ProviderUnavailableError`; close client in `finally`
-  - [ ] Return type: `list[list[float]]` — each embedding is `list[float]`
+- [x] **Task 2: Implement `app/providers/embedding/cohere.py`** (AC: 1)
+  - [x] Class `CohereEmbedder(EmbeddingProvider)` — implements `embed(texts) -> list[list[float]]`
+  - [x] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session and `self.settings = get_settings()`
+  - [x] Use `cohere` Python SDK: `import cohere`; async client: `cohere.AsyncClient`
+  - [x] `embed(texts)`: fetch API key via `get_secret(settings.cohere_api_key_secret_name)` → create client → call `client.embed(texts=texts, model=settings.cohere_embedding_model, input_type="search_document")` → return `[e for e in response.embeddings]`
+  - [x] Apply `@retry(max_attempts=3, backoff_factor=2, retry_on=(cohere.CohereError,))` on the inner call
+  - [x] Handle `cohere.CohereError` → raise `ProviderUnavailableError`; close client in `finally`
+  - [x] Return type: `list[list[float]]` — each embedding is `list[float]`
 
-- [ ] **Task 3: Implement `app/providers/embedding/bedrock.py`** (AC: 2)
-  - [ ] Class `BedrockEmbedder(EmbeddingProvider)` — implements `embed(texts) -> list[list[float]]`
-  - [ ] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session
-  - [ ] Use `aioboto3` — call `session.client("bedrock-runtime")` as async context manager
-  - [ ] Default model: `amazon.titan-embed-text-v1` (configurable via `Settings.bedrock_embedding_model_id`)
-  - [ ] Add `bedrock_embedding_model_id: str = "amazon.titan-embed-text-v1"` to config
-  - [ ] `embed(texts)`: for each text, call `client.invoke_model(modelId=settings.bedrock_embedding_model_id, body=json.dumps({"inputText": text}))` — parse response `body["embedding"]`; collect all into `list[list[float]]`; wrap in `ProviderUnavailableError` on exception
-  - [ ] `@retry` on transient exceptions: `aioboto3` / `botocore.exceptions.ClientError` with retryable status codes
+- [x] **Task 3: Implement `app/providers/embedding/bedrock.py`** (AC: 2)
+  - [x] Class `BedrockEmbedder(EmbeddingProvider)` — implements `embed(texts) -> list[list[float]]`
+  - [x] `__init__(self, aws_session: aioboto3.Session | None = None) -> None`: store session
+  - [x] Use `aioboto3` — call `session.client("bedrock-runtime")` as async context manager
+  - [x] Default model: `amazon.titan-embed-text-v1` (configurable via `Settings.bedrock_embedding_model_id`)
+  - [x] Add `bedrock_embedding_model_id: str = "amazon.titan-embed-text-v1"` to config
+  - [x] `embed(texts)`: for each text, call `client.invoke_model(modelId=settings.bedrock_embedding_model_id, body=json.dumps({"inputText": text}))` — parse response `body["embedding"]`; collect all into `list[list[float]]`; wrap in `ProviderUnavailableError` on exception
+  - [x] `@retry` on transient exceptions: `aioboto3` / `botocore.exceptions.ClientError` with retryable status codes
 
-- [ ] **Task 4: Add `EmbeddingModelMismatchError` to `app/core/errors.py`** (AC: 3)
-  - [ ] Add new `ErrorCode.EMBEDDING_MODEL_MISMATCH` is ALREADY in `app/core/errors.py` — verify
-  - [ ] Add new exception class:
+- [x] **Task 4: Add `EmbeddingModelMismatchError` to `app/core/errors.py`** (AC: 3)
+  - [x] Add new `ErrorCode.EMBEDDING_MODEL_MISMATCH` is ALREADY in `app/core/errors.py` — verify
+  - [x] Add new exception class:
     ```python
     class EmbeddingModelMismatchError(TrueRAGError):
         def __init__(self, message: str = "Embedding model mismatch — reindex required") -> None:
             super().__init__(code=ErrorCode.EMBEDDING_MODEL_MISMATCH, message=message, http_status=422)
     ```
 
-- [ ] **Task 5: Block queries when `embedding_provider` has been changed without reindex** (AC: 3, 4)
-  - [ ] In `app/services/agent_service.py`, the mismatch warning for `embedding_provider` change already fires (story 2.5)
-  - [ ] Add a new flag on `AgentDocument`: `embedding_provider_mismatch: bool = False` — set to `True` when `embedding_provider` changes while docs exist
-  - [ ] In `app/models/agent.py`, add `embedding_provider_mismatch: bool = False` field to `AgentDocument`
-  - [ ] In `app/services/agent_service.py`, when `embedding_provider` changes with existing docs: set `update_dict["embedding_provider_mismatch"] = True`
-  - [ ] In `app/services/agent_service.py`, when a reindex completes (story 4.6 code path): set `embedding_provider_mismatch = False` — find the reindex trigger in `app/api/v1/documents.py` or `ingestion_service.py` and add the reset
-  - [ ] In `app/pipelines/query/pipeline.py` or `app/services/query_service.py`, check before retrieval: `if agent.embedding_provider_mismatch: raise EmbeddingModelMismatchError()`
-  - [ ] Map `EmbeddingModelMismatchError` in `app/core/exception_handlers.py` (already handles `TrueRAGError` subclasses via `http_status`)
+- [x] **Task 5: Block queries when `embedding_provider` has been changed without reindex** (AC: 3, 4)
+  - [x] In `app/services/agent_service.py`, the mismatch warning for `embedding_provider` change already fires (story 2.5)
+  - [x] Add a new flag on `AgentDocument`: `embedding_provider_mismatch: bool = False` — set to `True` when `embedding_provider` changes while docs exist
+  - [x] In `app/models/agent.py`, add `embedding_provider_mismatch: bool = False` field to `AgentDocument`
+  - [x] In `app/services/agent_service.py`, when `embedding_provider` changes with existing docs: set `update_dict["embedding_provider_mismatch"] = True`
+  - [x] In `app/services/agent_service.py`, when a reindex completes (story 4.6 code path): set `embedding_provider_mismatch = False` — find the reindex trigger in `app/api/v1/documents.py` or `ingestion_service.py` and add the reset
+  - [x] In `app/pipelines/query/pipeline.py` or `app/services/query_service.py`, check before retrieval: `if agent.embedding_provider_mismatch: raise EmbeddingModelMismatchError()`
+  - [x] Map `EmbeddingModelMismatchError` in `app/core/exception_handlers.py` (already handles `TrueRAGError` subclasses via `http_status`)
 
-- [ ] **Task 6: Register both providers in `app/providers/registry.py`** (AC: 4)
-  - [ ] Import `CohereEmbedder`, `BedrockEmbedder`
-  - [ ] Add `"cohere": CohereEmbedder` and `"bedrock": BedrockEmbedder` to `EMBEDDING_REGISTRY`
+- [x] **Task 6: Register both providers in `app/providers/registry.py`** (AC: 4)
+  - [x] Import `CohereEmbedder`, `BedrockEmbedder`
+  - [x] Add `"cohere": CohereEmbedder` and `"bedrock": BedrockEmbedder` to `EMBEDDING_REGISTRY`
 
-- [ ] **Task 7: Write unit tests** (AC: 1, 2, 3)
-  - [ ] `tests/providers/test_cohere_embedder.py`:
+- [x] **Task 7: Write unit tests** (AC: 1, 2, 3)
+  - [x] `tests/providers/test_cohere_embedder.py`:
     - Mock `cohere.AsyncClient.embed` — verify called with correct texts and model
     - Test retry on `CohereError` — mock raises error once, succeeds second time
     - Test `ProviderUnavailableError` raised after exhausted retries
-  - [ ] `tests/providers/test_bedrock_embedder.py`:
+  - [x] `tests/providers/test_bedrock_embedder.py`:
     - Mock `aioboto3.Session.client` as async context manager
     - Verify `invoke_model` called with correct `modelId` and body
     - Test `ProviderUnavailableError` on exception
-  - [ ] `tests/services/test_query_service.py` or `tests/pipelines/test_query_pipeline.py`:
+  - [x] `tests/services/test_query_service.py` or `tests/pipelines/test_query_pipeline.py`:
     - Test query blocked with 422 when `embedding_provider_mismatch=True`
     - Test query succeeds when `embedding_provider_mismatch=False`
 
-- [ ] **Task 8: Add ADR for new embedding providers** (AC: 1, 2)
-  - [ ] Create `docs/adrs/adr-013-cohere-bedrock-embedding-providers.md`
-  - [ ] Document: mismatch detection mechanism and query-blocking design
+- [x] **Task 8: Add ADR for new embedding providers** (AC: 1, 2)
+  - [x] Create `docs/adrs/adr-013-cohere-bedrock-embedding-providers.md`
+  - [x] Document: mismatch detection mechanism and query-blocking design
 
-- [ ] **Task 9: Run regression tests** (AC: 4)
-  - [ ] `pytest tests/ -x -v --ignore=tests/integration`
-  - [ ] `mypy --strict app/providers/embedding/cohere.py app/providers/embedding/bedrock.py`
+- [x] **Task 9: Run regression tests** (AC: 4)
+  - [x] `pytest tests/ -x -v --ignore=tests/integration`
+  - [x] `mypy --strict app/providers/embedding/cohere.py app/providers/embedding/bedrock.py`
 
 ## Dev Notes
 
@@ -247,7 +247,37 @@ requirements.txt                  MODIFY: add cohere>=4.0.0
 claude-sonnet-4-6
 
 ### Debug Log References
+- `.venv/bin/pytest -q tests/providers/test_cohere_embedder.py tests/providers/test_bedrock_embedder.py tests/pipelines/test_query_pipeline.py tests/services/test_agent_service_dao.py tests/services/test_ingestion_service_dao.py tests/providers/test_registry.py tests/core/test_errors.py`
+- `.venv/bin/mypy --strict app/providers/embedding/cohere.py app/providers/embedding/bedrock.py`
+- `.venv/bin/pytest tests/ -x -v --ignore=tests/integration`
 
 ### Completion Notes List
+- Added `CohereEmbedder` and `BedrockEmbedder` providers with retry behavior, provider error wrapping, and registry integration.
+- Added `EmbeddingModelMismatchError`, persisted `embedding_provider_mismatch` state, and query-path blocking with HTTP 422 semantics when mismatch is active.
+- Wired mismatch flag lifecycle: set on embedding provider change with existing docs and reset on successful reindex enqueue.
+- Added dedicated unit tests for both providers and mismatch blocking behavior; regression and strict typing checks pass.
 
 ### File List
+- app/core/config.py
+- app/core/errors.py
+- app/models/agent.py
+- app/pipelines/query/pipeline.py
+- app/providers/embedding/__init__.py
+- app/providers/embedding/cohere.py
+- app/providers/embedding/bedrock.py
+- app/providers/registry.py
+- app/services/agent_service.py
+- app/services/ingestion_service.py
+- tests/providers/test_cohere_embedder.py
+- tests/providers/test_bedrock_embedder.py
+- tests/pipelines/test_query_pipeline.py
+- tests/services/test_agent_service_dao.py
+- tests/services/test_ingestion_service_dao.py
+- tests/providers/test_registry.py
+- tests/core/test_errors.py
+- tests/core/test_dependencies.py
+- pyproject.toml
+- docs/adrs/adr-013-cohere-bedrock-embedding-providers.md
+
+### Change Log
+- 2026-05-03: Implemented Story 8.3 with Cohere and Bedrock embedders, embedding provider mismatch guardrail, query blocking until reindex, and full test/regression validation.

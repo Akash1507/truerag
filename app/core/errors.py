@@ -55,6 +55,18 @@ class PIIDetectedError(TrueRAGError):
         super().__init__(code=code, message=message, http_status=http_status)
 
 
+class EmbeddingModelMismatchError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Embedding model mismatch — reindex required",
+    ) -> None:
+        super().__init__(
+            code=ErrorCode.EMBEDDING_MODEL_MISMATCH,
+            message=message,
+            http_status=422,
+        )
+
+
 class ProviderUnavailableError(TrueRAGError):
     def __init__(
         self,

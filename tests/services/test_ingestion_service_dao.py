@@ -1,6 +1,6 @@
 import json
 from io import BytesIO
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import UploadFile
@@ -339,7 +339,9 @@ async def test_reindex_agent_happy_path() -> None:
         ingestion_service.document_dao, "find", AsyncMock(return_value=[doc1, doc2])
     ), patch.object(
         ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
-    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc:
+    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc, patch.object(
+        ingestion_service.agent_dao, "update", AsyncMock()
+    ) as update_agent:
         result = await ingestion_service.reindex_agent(
             AGENT_ID,
             TENANT_ID,
@@ -352,6 +354,10 @@ async def test_reindex_agent_happy_path() -> None:
     delete_namespace.assert_awaited_once_with(f"{TENANT_ID}_{AGENT_ID}")
     assert insert_job.await_count == 2
     assert update_doc.await_count == 2
+    update_agent.assert_awaited_once_with(
+        {"agent_id": AGENT_ID},
+        {"embedding_provider_mismatch": False, "updated_at": ANY},
+    )
     sqs_client = aws.client.side_effect("sqs").__aenter__.return_value
     assert sqs_client.send_message.await_count == 2
 
@@ -369,7 +375,9 @@ async def test_reindex_agent_empty_agent() -> None:
         ingestion_service.document_dao, "find", AsyncMock(return_value=[])
     ), patch.object(
         ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()
-    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc:
+    ) as insert_job, patch.object(ingestion_service.document_dao, "update", AsyncMock()) as update_doc, patch.object(
+        ingestion_service.agent_dao, "update", AsyncMock()
+    ):
         result = await ingestion_service.reindex_agent(
             AGENT_ID,
             TENANT_ID,
@@ -398,7 +406,9 @@ async def test_reindex_agent_skips_archived_and_non_ready_docs() -> None:
         ingestion_service.document_dao,
         "find",
         AsyncMock(return_value=[]),
-    ) as find_docs, patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()) as insert_job:
+    ) as find_docs, patch.object(ingestion_service.ingestion_job_dao, "insert_one", AsyncMock()) as insert_job, patch.object(
+        ingestion_service.agent_dao, "update", AsyncMock()
+    ):
         result = await ingestion_service.reindex_agent(
             AGENT_ID,
             TENANT_ID,

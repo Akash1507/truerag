@@ -16,6 +16,7 @@ from app.core.errors import (
     UnsupportedFileTypeError,
 )
 from app.db.dao.document_dao import document_dao
+from app.db.dao.agent_dao import agent_dao
 from app.db.dao.ingestion_job_dao import ingestion_job_dao
 from app.models.document import (
     DocumentListItem,
@@ -456,6 +457,11 @@ async def reindex_agent(
                     raise IngestionError(f"SQS enqueue failed during reindex: {sqs_exc}") from sqs_exc
     except IngestionError:
         raise
+
+    await agent_dao.update(
+        {"agent_id": agent_id},
+        {"embedding_provider_mismatch": False, "updated_at": datetime.now(UTC)},
+    )
 
     logger.info(
         "reindex_complete",

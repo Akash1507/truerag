@@ -45,6 +45,7 @@ async def test_process_job_updates_processing_then_ready() -> None:
         patch("app.workers.ingestion_worker.agent_dao.find_one", AsyncMock(return_value=_make_agent())),
         patch("app.workers.ingestion_worker.document_dao.find_one", AsyncMock(return_value=current_doc)),
         patch("app.workers.ingestion_worker.run_ingestion_pipeline", AsyncMock(return_value=None)),
+        patch("app.workers.ingestion_worker.semantic_cache.invalidate", AsyncMock(return_value=None)),
         patch("app.workers.ingestion_worker.document_dao.update", AsyncMock()) as update_doc,
         patch("app.workers.ingestion_worker.ingestion_job_dao.update", AsyncMock()) as update_job,
     ):

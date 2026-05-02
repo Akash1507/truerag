@@ -70,6 +70,21 @@ async def process_job(
         )
         raise
 
+    try:
+        await semantic_cache.invalidate(payload.agent_id)
+    except Exception:
+        logger.exception(
+            "semantic_cache_invalidation_failed",
+            extra={
+                "operation": "process_job",
+                "extra_data": {
+                    "agent_id": payload.agent_id,
+                    "tenant_id": payload.tenant_id,
+                    "document_id": payload.document_id,
+                },
+            },
+        )
+
     # Update job first (canonical status source in get_document_status)
     await ingestion_job_dao.update({"job_id": payload.job_id}, {"status": DocumentStatus.ready})
     await document_dao.update(
@@ -120,21 +135,6 @@ async def _finalize_replacement_if_needed(
             "superseded_by_document_id": payload.document_id,
         },
     )
-    try:
-        await semantic_cache.invalidate(payload.agent_id)
-    except Exception:
-        logger.exception(
-            "semantic_cache_invalidation_failed",
-            extra={
-                "operation": "replacement_finalization",
-                "extra_data": {
-                    "agent_id": payload.agent_id,
-                    "tenant_id": payload.tenant_id,
-                    "document_id": payload.document_id,
-                    "predecessor_document_id": predecessor.document_id,
-                },
-            },
-        )
 
 
 async def _rollback_new_vectors(vector_store, namespace: str, document_id: str) -> None:

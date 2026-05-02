@@ -3,9 +3,9 @@ import time
 from statistics import mean
 from typing import Literal
 
-from app.core.errors import ProviderUnavailableError
+from app.core.errors import EmbeddingModelMismatchError, ProviderUnavailableError
 from app.models.agent import AgentDocument
-from app.models.chunk import VectorResult
+from app.models.chunk import Chunk, VectorResult
 from app.models.query import Citation, QueryResponse
 from app.pipelines.query.generator import generate_answer
 from app.pipelines.query.rewriter import rewrite_query
@@ -27,6 +27,9 @@ async def run_query_pipeline(
     output_format: Literal["text", "json"] | None = None,
     request_id: str | None = None,
 ) -> QueryResponse:
+    if agent.embedding_provider_mismatch:
+        raise EmbeddingModelMismatchError()
+
     t0 = time.perf_counter()
     scrubbed_query = scrub_pii(query)
     logger.info(
@@ -232,8 +235,11 @@ def _execute_rerank(
     if not reranker_cls:
         raise ProviderUnavailableError(f"Reranker '{agent.reranker}' not registered")
     reranker = reranker_cls()
-    reranked = reranker.rerank(scrubbed_query, results, top_k)
-    return reranked[:top_k]
+    chunks = [Chunk(text=result.text, metadata=result.metadata, vector=None) for result in results]
+    reranked_chunks = reranker.rerank(scrubbed_query, chunks, top_k)
+    reranked_by_text = {chunk.text: chunk for chunk in reranked_chunks[:top_k]}
+    reranked_results = [result for result in results if result.text in reranked_by_text]
+    return reranked_results[:top_k]
 
 
 async def _execute_generation(

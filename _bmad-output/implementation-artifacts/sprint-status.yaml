@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-03T00:00:00Z  # updated: story 10-1 moved to review
+last_updated: 2026-05-03T00:00:00Z  # updated: story 8-5 moved to review
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -111,12 +111,12 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: Multi-Provider Expansion & Semantic Caching
-  epic-8: in-progress
-  8-1-qdrant-vector-store-backend: ready-for-dev
-  8-2-pinecone-vector-store-backend: ready-for-dev
-  8-3-cohere-and-aws-bedrock-embedding-providers: ready-for-dev
-  8-4-openai-and-aws-bedrock-llm-providers: ready-for-dev
-  8-5-semantic-cache-lookup-store-invalidation-and-audit-logging: ready-for-dev
+  epic-8: done
+  8-1-qdrant-vector-store-backend: done
+  8-2-pinecone-vector-store-backend: done
+  8-3-cohere-and-aws-bedrock-embedding-providers: done
+  8-4-openai-and-aws-bedrock-llm-providers: done
+  8-5-semantic-cache-lookup-store-invalidation-and-audit-logging: done
   epic-8-retrospective: optional
 
   # Epic 9: Platform Observability & Governance
