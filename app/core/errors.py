@@ -22,6 +22,8 @@ class ErrorCode(StrEnum):
     PERMANENT_INGESTION_ERROR = "PERMANENT_INGESTION_ERROR"
     UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
     DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
+    EVAL_DATASET_NOT_FOUND = "EVAL_DATASET_NOT_FOUND"
+    EVAL_NO_DATASET = "EVAL_NO_DATASET"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -199,5 +201,25 @@ class DocumentNotFoundError(TrueRAGError):
         message: str = "Document not found",
         code: ErrorCode = ErrorCode.DOCUMENT_NOT_FOUND,
         http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class EvalDatasetNotFoundError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Eval dataset not found",
+        code: ErrorCode = ErrorCode.EVAL_DATASET_NOT_FOUND,
+        http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class EvalNoDatasetError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "No eval dataset configured for this agent",
+        code: ErrorCode = ErrorCode.EVAL_NO_DATASET,
+        http_status: int = 422,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)

@@ -33,6 +33,7 @@ class AgentDocument(Document):
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
+    faithfulness_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     status: str
     created_at: datetime
     updated_at: datetime
@@ -74,6 +75,7 @@ class AgentCreateRequest(BaseModel):
     tenant_id: str | None = None
     semantic_cache_enabled: bool = False
     semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    faithfulness_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def validate_chunk_overlap(self) -> "AgentCreateRequest":
@@ -99,6 +101,7 @@ class AgentCreateResponse(BaseModel):
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
+    faithfulness_threshold: float
     status: str
     created_at: datetime
     updated_at: datetime
@@ -120,6 +123,7 @@ class AgentConfigUpdateRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=100)
     semantic_cache_enabled: bool | None = None
     semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    faithfulness_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def validate_chunk_overlap(self) -> "AgentConfigUpdateRequest":
@@ -151,6 +155,7 @@ class AgentUpdateResponse(BaseModel):
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
+    faithfulness_threshold: float
     status: str
     created_at: datetime
     updated_at: datetime

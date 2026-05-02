@@ -1,5 +1,5 @@
 # generated: 2026-04-18T00:00:00Z
-# last_updated: 2026-05-02T00:00:00Z  # updated: epic-7 and stories 7-1..7-5 marked done
+# last_updated: 2026-05-02T00:00:00Z  # updated: epic-9 set in-progress; story 9-1 ready-for-dev
 # project: truerag
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-02T00:00:00Z  # updated: epic-7 and stories 7-1..7-5 marked done
+last_updated: 2026-05-02T00:00:00Z  # updated: epic-10 set in-progress; stories 10-1..10-4 ready-for-dev
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -94,11 +94,11 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Evaluation, Quality Assurance & Regression Detection
-  epic-6: backlog
-  6-1-golden-dataset-management: backlog
-  6-2-ragas-evaluation-run-and-experiment-storage: backlog
-  6-3-regression-detection-and-alert: backlog
-  6-4-evaluation-history-and-cicd-integration: backlog
+  epic-6: done
+  6-1-golden-dataset-management: done
+  6-2-ragas-evaluation-run-and-experiment-storage: done
+  6-3-regression-detection-and-alert: done
+  6-4-evaluation-history-and-cicd-integration: done
   epic-6-retrospective: optional
 
   # Epic 7: Advanced Chunking, Retrieval Strategies & Extension Model
@@ -111,25 +111,25 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: Multi-Provider Expansion & Semantic Caching
-  epic-8: backlog
-  8-1-qdrant-vector-store-backend: backlog
-  8-2-pinecone-vector-store-backend: backlog
-  8-3-cohere-and-aws-bedrock-embedding-providers: backlog
-  8-4-openai-and-aws-bedrock-llm-providers: backlog
-  8-5-semantic-cache-lookup-store-invalidation-and-audit-logging: backlog
+  epic-8: in-progress
+  8-1-qdrant-vector-store-backend: ready-for-dev
+  8-2-pinecone-vector-store-backend: ready-for-dev
+  8-3-cohere-and-aws-bedrock-embedding-providers: ready-for-dev
+  8-4-openai-and-aws-bedrock-llm-providers: ready-for-dev
+  8-5-semantic-cache-lookup-store-invalidation-and-audit-logging: ready-for-dev
   epic-8-retrospective: optional
 
   # Epic 9: Platform Observability & Governance
-  epic-9: backlog
-  9-1-per-stage-latency-tracking: backlog
-  9-2-cost-per-query-tracking: backlog
-  9-3-metrics-endpoint-prometheus-and-per-tenant-aggregation: backlog
+  epic-9: in-progress
+  9-1-per-stage-latency-tracking: ready-for-dev
+  9-2-cost-per-query-tracking: ready-for-dev
+  9-3-metrics-endpoint-prometheus-and-per-tenant-aggregation: ready-for-dev
   epic-9-retrospective: optional
 
   # Epic 10: Production Deployment & Operations
-  epic-10: backlog
-  10-1-terraform-infrastructure-core-aws-services: backlog
-  10-2-ecs-fargate-services-api-and-worker-task-definitions: backlog
-  10-3-cloudwatch-alarms-and-ragas-regression-alerting: backlog
-  10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: backlog
+  epic-10: in-progress
+  10-1-terraform-infrastructure-core-aws-services: ready-for-dev
+  10-2-ecs-fargate-services-api-and-worker-task-definitions: ready-for-dev
+  10-3-cloudwatch-alarms-and-ragas-regression-alerting: ready-for-dev
+  10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: ready-for-dev
   epic-10-retrospective: optional

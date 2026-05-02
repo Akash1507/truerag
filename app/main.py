@@ -17,6 +17,7 @@ from app.core.rate_limiter import RateLimiterMiddleware
 from app.models.agent import AgentDocument
 from app.models.document import DocumentRecord
 from app.models.ingestion_job import IngestionJob
+from app.models.eval import EvalDataset, EvalExperiment
 from app.models.tenant import TenantDocument
 from app.utils.observability import get_logger
 
@@ -36,7 +37,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         db = motor_client[settings.mongodb_database]
         await init_beanie(
             database=db,
-            document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob],
+            document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob, EvalDataset, EvalExperiment],
         )
         logger.info("beanie_initialized", extra={"operation": "app_startup"})
         await db["tenants"].create_index([("name", 1)], unique=True)

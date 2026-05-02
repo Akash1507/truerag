@@ -82,6 +82,7 @@ async def create_agent(
         top_k=request.top_k,
         semantic_cache_enabled=request.semantic_cache_enabled,
         semantic_cache_threshold=request.semantic_cache_threshold,
+        faithfulness_threshold=request.faithfulness_threshold,
         status="active",
         created_at=now,
         updated_at=now,
@@ -175,6 +176,7 @@ async def update_agent_config(
         "top_k",
         "semantic_cache_enabled",
         "semantic_cache_threshold",
+        "faithfulness_threshold",
     ):
         if field in provided_fields:
             update_dict[field] = getattr(request, field)

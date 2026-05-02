@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from app.main import create_app
 from app.models.agent import AgentDocument
 from app.models.document import DocumentRecord
+from app.models.eval import EvalDataset, EvalExperiment
 from app.models.ingestion_job import IngestionJob
 from app.models.tenant import TenantDocument
 
@@ -28,5 +29,7 @@ def mock_beanie_collection_access() -> object:
         AgentDocument, "get_pymongo_collection", return_value=object()
     ), patch.object(DocumentRecord, "get_pymongo_collection", return_value=object()), patch.object(
         IngestionJob, "get_pymongo_collection", return_value=object()
+    ), patch.object(EvalDataset, "get_pymongo_collection", return_value=object()), patch.object(
+        EvalExperiment, "get_pymongo_collection", return_value=object()
     ):
         yield
