@@ -30,13 +30,16 @@ async def run_query_pipeline(
             "extra_data": {"agent_id": agent.agent_id, "tenant_id": agent.tenant_id},
         },
     )
+    t_retrieval = time.perf_counter()
     results = await _execute_retrieval(
         scrubbed_query=scrubbed_query,
         top_k=top_k,
         agent=agent,
         filters=filters,
     )
+    retrieval_ms = round((time.perf_counter() - t_retrieval) * 1000)
     answer = ""
+    t_generation = time.perf_counter()
     if results:
         answer = await _execute_generation(
             scrubbed_query=scrubbed_query,
@@ -44,12 +47,26 @@ async def run_query_pipeline(
             agent=agent,
             output_format=output_format,
         )
+    generation_ms = round((time.perf_counter() - t_generation) * 1000)
     confidence = _compute_confidence(results)
     citations = [
         Citation(document_name=result.metadata.document_id, chunk_text=result.text, page_reference=None)
         for result in results
     ]
     latency_ms = round((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "query_pipeline",
+        extra={
+            "operation": "query_pipeline",
+            "latency_ms": latency_ms,
+            "extra_data": {
+                "retrieval_ms": retrieval_ms,
+                "generation_ms": generation_ms,
+                "tenant_id": agent.tenant_id,
+                "agent_id": agent.agent_id,
+            },
+        },
+    )
     return QueryResponse(answer=answer, confidence=confidence, citations=citations, latency_ms=latency_ms)
 
 

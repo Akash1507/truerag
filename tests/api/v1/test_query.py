@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.errors import AgentNotFoundError, ForbiddenError
+from app.core.errors import AgentNotFoundError, ForbiddenError, ProviderUnavailableError
 from app.models.query import QueryResponse
 from app.models.tenant import TenantDocument
 
@@ -161,3 +161,21 @@ async def test_query_route_without_filters_defaults_to_none(client) -> None:  # 
     assert response.status_code == 200
     request_model = mock_handle_query.await_args.kwargs["request"]
     assert request_model.filters is None
+
+
+@pytest.mark.asyncio
+async def test_query_endpoint_provider_unavailable_returns_503(client) -> None:  # type: ignore[no-untyped-def]
+    with patch("app.core.auth.tenant_dao.find_one", AsyncMock(return_value=_tenant())), patch(
+        "app.api.v1.query.query_service.handle_query",
+        AsyncMock(side_effect=ProviderUnavailableError("pgvector down")),
+    ):
+        response = await client.post(
+            "/v1/agents/agent-1/query",
+            json={"query": "test query"},
+            headers={"X-API-Key": "key"},
+        )
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["error"]["code"] == "PROVIDER_UNAVAILABLE"
+    assert "detail" not in body

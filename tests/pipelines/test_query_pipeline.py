@@ -303,6 +303,34 @@ async def test_pipeline_emits_embedding_and_retrieval_logs() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pipeline_emits_query_pipeline_log_with_stage_breakdown() -> None:
+    agent = _make_agent()
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=[_make_vector_result()])
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.logger") as mock_logger,
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
+    ):
+        await run_query_pipeline("my query", 5, agent)
+
+    query_pipeline_calls = [
+        call for call in mock_logger.info.call_args_list if call.kwargs.get("extra", {}).get("operation") == "query_pipeline"
+    ]
+    assert len(query_pipeline_calls) == 1
+    query_pipeline_extra = query_pipeline_calls[0].kwargs["extra"]
+    assert isinstance(query_pipeline_extra["latency_ms"], int)
+    assert isinstance(query_pipeline_extra["extra_data"]["retrieval_ms"], int)
+    assert isinstance(query_pipeline_extra["extra_data"]["generation_ms"], int)
+
+
+@pytest.mark.asyncio
 async def test_pipeline_no_filters_passes_none_to_vector_store() -> None:
     agent = _make_agent()
     mock_embedder = AsyncMock()
