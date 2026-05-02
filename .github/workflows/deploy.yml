@@ -1,0 +1,183 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPOSITORY: truerag
+      ECS_CLUSTER: truerag
+      API_SERVICE: truerag-api
+      WORKER_SERVICE: truerag-worker
+      API_CONTAINER_NAME: truerag-api
+      WORKER_CONTAINER_NAME: truerag-worker
+      EVAL_TIMEOUT_MINUTES: "10"
+      EVAL_POLL_INTERVAL_SECONDS: "30"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install eval gate deps
+        run: pip install requests
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          docker build -t "$IMAGE_URI" -t "$LATEST_URI" .
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Register API task definition with new image
+        run: |
+          set -euo pipefail
+          CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition --task-definition "$CURRENT_TASK_DEF_ARN" --query 'taskDefinition' > api_taskdef.json
+
+          python - <<'PY'
+          import json
+          import os
+
+          data = json.load(open("api_taskdef.json"))
+          image = os.environ["IMAGE_URI"]
+          container_name = os.environ["API_CONTAINER_NAME"]
+
+          for container in data["containerDefinitions"]:
+              if container["name"] == container_name:
+                  container["image"] = image
+
+          for key in [
+              "taskDefinitionArn",
+              "revision",
+              "status",
+              "requiresAttributes",
+              "compatibilities",
+              "registeredAt",
+              "registeredBy",
+          ]:
+              data.pop(key, None)
+
+          with open("api_taskdef_new.json", "w", encoding="utf-8") as f:
+              json.dump(data, f)
+          PY
+
+          API_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://api_taskdef_new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "API_TASK_DEF_ARN=$API_TASK_DEF_ARN" >> "$GITHUB_ENV"
+
+      - name: Register worker task definition with new image
+        run: |
+          set -euo pipefail
+          CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$WORKER_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition --task-definition "$CURRENT_TASK_DEF_ARN" --query 'taskDefinition' > worker_taskdef.json
+
+          python - <<'PY'
+          import json
+          import os
+
+          data = json.load(open("worker_taskdef.json"))
+          image = os.environ["IMAGE_URI"]
+          container_name = os.environ["WORKER_CONTAINER_NAME"]
+
+          for container in data["containerDefinitions"]:
+              if container["name"] == container_name:
+                  container["image"] = image
+
+          for key in [
+              "taskDefinitionArn",
+              "revision",
+              "status",
+              "requiresAttributes",
+              "compatibilities",
+              "registeredAt",
+              "registeredBy",
+          ]:
+              data.pop(key, None)
+
+          with open("worker_taskdef_new.json", "w", encoding="utf-8") as f:
+              json.dump(data, f)
+          PY
+
+          WORKER_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://worker_taskdef_new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "WORKER_TASK_DEF_ARN=$WORKER_TASK_DEF_ARN" >> "$GITHUB_ENV"
+
+      - name: Deploy API service (rolling)
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$API_SERVICE" \
+            --task-definition "$API_TASK_DEF_ARN" \
+            --force-new-deployment
+
+      - name: Deploy worker service (rolling)
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$WORKER_SERVICE" \
+            --task-definition "$WORKER_TASK_DEF_ARN" \
+            --force-new-deployment
+
+      - name: Wait for API service to stabilize
+        run: timeout 600s aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$API_SERVICE"
+
+      - name: Wait for worker service to stabilize
+        run: timeout 600s aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$WORKER_SERVICE"
+
+      - name: Run RAGAS eval gate
+        env:
+          TRUERAG_API_URL: ${{ secrets.TRUERAG_API_URL }}
+          TRUERAG_API_KEY: ${{ secrets.TRUERAG_API_KEY }}
+          EVAL_AGENT_ID: ${{ secrets.EVAL_AGENT_ID }}
+          RAGAS_FAITHFULNESS_THRESHOLD: ${{ vars.RAGAS_FAITHFULNESS_THRESHOLD || '0.6' }}
+        run: python scripts/eval_gate.py

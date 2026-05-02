@@ -124,13 +124,13 @@ async def _write_regression_metric(
             endpoint_url=settings.aws_endpoint_url,
         ) as cw:
             await cw.put_metric_data(
-                Namespace="TrueRAG/EvalQuality",
+                Namespace="TrueRAG/Eval",
                 MetricData=[
                     {
-                        "MetricName": "FaithfulnessRegression",
+                        "MetricName": "RAGASFaithfulness",
                         "Dimensions": [
-                            {"Name": "tenant_id", "Value": tenant_id},
-                            {"Name": "agent_id", "Value": agent_id},
+                            {"Name": "TenantId", "Value": tenant_id},
+                            {"Name": "AgentId", "Value": agent_id},
                         ],
                         "Value": faithfulness,
                         "Unit": "None",

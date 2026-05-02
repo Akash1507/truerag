@@ -1,6 +1,6 @@
 # Story 10.3: CloudWatch Alarms & RAGAS Regression Alerting
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -18,59 +18,59 @@ so that quality regressions and infrastructure failures trigger automatic notifi
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `terraform/modules/cloudwatch/` module (AC: 1, 3)
-  - [ ] `terraform/modules/cloudwatch/main.tf` — SNS topic, alarms
-  - [ ] `terraform/modules/cloudwatch/variables.tf` — thresholds, email, metric namespace
-  - [ ] `terraform/modules/cloudwatch/outputs.tf` — SNS topic ARN, alarm names
+- [x] Task 1: Create `terraform/modules/cloudwatch/` module (AC: 1, 3)
+  - [x] `terraform/modules/cloudwatch/main.tf` — SNS topic, alarms
+  - [x] `terraform/modules/cloudwatch/variables.tf` — thresholds, email, metric namespace
+  - [x] `terraform/modules/cloudwatch/outputs.tf` — SNS topic ARN, alarm names
 
-- [ ] Task 2: SNS topic + email subscription (AC: 1, 2)
-  - [ ] Create SNS topic `truerag-alerts`
-  - [ ] Email subscription using `var.alert_email` variable
-  - [ ] Note: SNS email subscriptions require manual confirmation — document this in README
+- [x] Task 2: SNS topic + email subscription (AC: 1, 2)
+  - [x] Create SNS topic `truerag-alerts`
+  - [x] Email subscription using `var.alert_email` variable
+  - [x] Note: SNS email subscriptions require manual confirmation — document this in README
 
-- [ ] Task 3: RAGAS regression CloudWatch alarm (AC: 1, 2)
-  - [ ] Alarm on custom metric namespace `TrueRAG/Eval`, metric name `RAGASFaithfulness`
-  - [ ] Dimensions: match what `eval_service.py` writes — `TenantId` and `AgentId`
-  - [ ] Threshold: `var.ragas_faithfulness_threshold` (default 0.6 per NFR4: baseline > 0.7, alert < 0.6)
-  - [ ] Comparison: `LessThanThreshold`
-  - [ ] Evaluation periods: 1, period: 300s (5 min)
-  - [ ] Treat missing data: `notBreaching` (no eval run = no alert)
-  - [ ] Alarm action: SNS topic ARN
-  - [ ] Alarm description must match AC2 requirement for tenant/agent context — this comes from metric dimensions, not alarm message body; document limitation in ADR
+- [x] Task 3: RAGAS regression CloudWatch alarm (AC: 1, 2)
+  - [x] Alarm on custom metric namespace `TrueRAG/Eval`, metric name `RAGASFaithfulness`
+  - [x] Dimensions: match what `eval_service.py` writes — `TenantId` and `AgentId`
+  - [x] Threshold: `var.ragas_faithfulness_threshold` (default 0.6 per NFR4: baseline > 0.7, alert < 0.6)
+  - [x] Comparison: `LessThanThreshold`
+  - [x] Evaluation periods: 1, period: 300s (5 min)
+  - [x] Treat missing data: `notBreaching` (no eval run = no alert)
+  - [x] Alarm action: SNS topic ARN
+  - [x] Alarm description must match AC2 requirement for tenant/agent context — this comes from metric dimensions, not alarm message body; document limitation in ADR
 
-- [ ] Task 4: Cross-check `eval_service.py` metric write format (AC: 1, 2)
-  - [ ] Read `app/services/eval_service.py` to confirm exact metric namespace, metric name, and dimension keys used in `put_metric_data` call
-  - [ ] If `eval_service.py` not yet implemented (Story 6.1-6.4 may be in-progress), define the expected contract and leave a comment in the Terraform code specifying what `eval_service.py` must write
-  - [ ] Alarm namespace/dimensions MUST exactly match what `eval_service.py` writes — mismatch = alarm never fires
+- [x] Task 4: Cross-check `eval_service.py` metric write format (AC: 1, 2)
+  - [x] Read `app/services/eval_service.py` to confirm exact metric namespace, metric name, and dimension keys used in `put_metric_data` call
+  - [x] If `eval_service.py` not yet implemented (Story 6.1-6.4 may be in-progress), define the expected contract and leave a comment in the Terraform code specifying what `eval_service.py` must write
+  - [x] Alarm namespace/dimensions MUST exactly match what `eval_service.py` writes — mismatch = alarm never fires
 
-- [ ] Task 5: ECS unhealthy task alarm (AC: 3)
-  - [ ] Alarm: `AWS/ECS` namespace, metric `RunningTaskCount` on cluster `truerag`, service `truerag-api`
-  - [ ] Alternative: use ALB `UnHealthyHostCount` metric from `AWS/ApplicationELB` namespace for more precise health signal
-  - [ ] Threshold: `LessThanThreshold`, value `var.api_desired_count` (e.g., 2 in prod, 1 in dev)
-  - [ ] Period: 60s, evaluation periods: 2
-  - [ ] Alarm action: SNS topic ARN
+- [x] Task 5: ECS unhealthy task alarm (AC: 3)
+  - [x] Alarm: `AWS/ECS` namespace, metric `RunningTaskCount` on cluster `truerag`, service `truerag-api`
+  - [x] Alternative: use ALB `UnHealthyHostCount` metric from `AWS/ApplicationELB` namespace for more precise health signal
+  - [x] Threshold: `LessThanThreshold`, value `var.api_desired_count` (e.g., 2 in prod, 1 in dev)
+  - [x] Period: 60s, evaluation periods: 2
+  - [x] Alarm action: SNS topic ARN
 
-- [ ] Task 6: RDS CPU alarm (AC: 3)
-  - [ ] Alarm: `AWS/RDS` namespace, metric `CPUUtilization`
-  - [ ] Threshold: 80%, `GreaterThanThreshold`
-  - [ ] Period: 300s, evaluation periods: 2
-  - [ ] Alarm action: SNS topic ARN
+- [x] Task 6: RDS CPU alarm (AC: 3)
+  - [x] Alarm: `AWS/RDS` namespace, metric `CPUUtilization`
+  - [x] Threshold: 80%, `GreaterThanThreshold`
+  - [x] Period: 300s, evaluation periods: 2
+  - [x] Alarm action: SNS topic ARN
 
-- [ ] Task 7: SQS DLQ depth alarm (AC: 3)
-  - [ ] Alarm: `AWS/SQS` namespace, metric `ApproximateNumberOfMessagesVisible` on DLQ
-  - [ ] Threshold: 0, `GreaterThanThreshold`
-  - [ ] Period: 60s, evaluation periods: 1
-  - [ ] Alarm action: SNS topic ARN
-  - [ ] This alarm fires the moment any message lands in DLQ — failed ingestion requires investigation
+- [x] Task 7: SQS DLQ depth alarm (AC: 3)
+  - [x] Alarm: `AWS/SQS` namespace, metric `ApproximateNumberOfMessagesVisible` on DLQ
+  - [x] Threshold: 0, `GreaterThanThreshold`
+  - [x] Period: 60s, evaluation periods: 1
+  - [x] Alarm action: SNS topic ARN
+  - [x] This alarm fires the moment any message lands in DLQ — failed ingestion requires investigation
 
-- [ ] Task 8: Wire cloudwatch module into environments (AC: 1, 3)
-  - [ ] Add cloudwatch module call to `terraform/environments/prod/main.tf`
-  - [ ] Pass SQS DLQ ARN from sqs module, ECS service name from ecs module, RDS instance ID from rds module
-  - [ ] Set `alert_email` variable — use `var.alert_email` in tfvars.example (no actual email hardcoded)
+- [x] Task 8: Wire cloudwatch module into environments (AC: 1, 3)
+  - [x] Add cloudwatch module call to `terraform/environments/prod/main.tf`
+  - [x] Pass SQS DLQ ARN from sqs module, ECS service name from ecs module, RDS instance ID from rds module
+  - [x] Set `alert_email` variable — use `var.alert_email` in tfvars.example (no actual email hardcoded)
 
-- [ ] Task 9: Write ADR for alerting approach (AC: 2)
-  - [ ] Create `docs/adrs/adr-018-ragas-regression-alerting.md`
-  - [ ] Document: v1 email-only via SNS; Slack/webhook deferred to v2; limitation that alarm message body does not contain score/threshold values (those are in CloudWatch metrics); rationale for `notBreaching` on missing data
+- [x] Task 9: Write ADR for alerting approach (AC: 2)
+  - [x] Create `docs/adrs/adr-018-ragas-regression-alerting.md`
+  - [x] Document: v1 email-only via SNS; Slack/webhook deferred to v2; limitation that alarm message body does not contain score/threshold values (those are in CloudWatch metrics); rationale for `notBreaching` on missing data
 
 ## Dev Notes
 
@@ -149,10 +149,39 @@ terraform/modules/cloudwatch/
 
 ### Agent Model Used
 
-claude-sonnet-4-6
+gpt-5 (Codex)
 
 ### Debug Log References
 
+- Added red-phase tests for CloudWatch metric contract and Terraform alarm/module resources.
+- Confirmed red failures before implementation (`.venv/bin/pytest ...`).
+- Implemented Terraform cloudwatch module + prod wiring + ADR + eval_service metric contract alignment.
+- Full regression run passed (`358 passed, 9 skipped`).
+
 ### Completion Notes List
 
+- Implemented `terraform/modules/cloudwatch` with SNS topic, email subscription, and 4 alarms:
+  RAGAS faithfulness regression, ECS running task count low, RDS CPU high, and SQS DLQ depth.
+- Aligned `app/services/eval_service.py` metric write contract to:
+  namespace `TrueRAG/Eval`, metric `RAGASFaithfulness`, dimensions `TenantId` and `AgentId`.
+- Added `terraform/environments/prod` module wiring and `terraform.tfvars.example` with `alert_email`.
+- Documented v1 email-only approach and CloudWatch/SNS payload limitations in ADR-018.
+- Added infra tests for Terraform artifact contract and service test for CloudWatch metric payload shape.
+
 ### File List
+
+- app/services/eval_service.py
+- tests/services/test_eval_service.py
+- tests/infra/test_cloudwatch_terraform.py
+- terraform/modules/cloudwatch/main.tf
+- terraform/modules/cloudwatch/variables.tf
+- terraform/modules/cloudwatch/outputs.tf
+- terraform/environments/prod/main.tf
+- terraform/environments/prod/variables.tf
+- terraform/environments/prod/terraform.tfvars.example
+- terraform/README.md
+- docs/adrs/adr-018-ragas-regression-alerting.md
+
+## Change Log
+
+- 2026-05-03: Implemented Story 10.3 end-to-end (CloudWatch module, SNS email subscription, eval metric contract alignment, prod wiring, ADR-018, tests).

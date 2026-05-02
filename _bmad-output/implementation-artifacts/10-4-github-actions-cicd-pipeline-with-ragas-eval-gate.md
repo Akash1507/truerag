@@ -1,6 +1,6 @@
 # Story 10.4: GitHub Actions CI-CD Pipeline with RAGAS Eval Gate
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -22,76 +22,76 @@ so that code quality and retrieval quality are both enforced automatically befor
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `ci.yml` workflow (AC: 1)
-  - [ ] Trigger: `on: pull_request: branches: [main]`
-  - [ ] Job: `quality-checks`
-  - [ ] Step: Checkout code
-  - [ ] Step: Setup Python 3.11 with `actions/setup-python`
-  - [ ] Step: Install dependencies via `pip install -r requirements.txt -r requirements-dev.txt`
-  - [ ] Step: Run Ruff lint — `ruff check .`
-  - [ ] Step: Run Ruff format check — `ruff format --check .`
-  - [ ] Step: Run mypy strict — `mypy --strict app/`
-  - [ ] Step: Run pytest unit tests — `pytest tests/ -m "not integration" -v`
-  - [ ] Step: Run pytest integration tests — `pytest tests/ -m integration -v` (may require service containers)
-  - [ ] Configure test service containers (PostgreSQL with pgvector, MongoDB) for integration tests if needed
+- [x] Task 1: Create `ci.yml` workflow (AC: 1)
+  - [x] Trigger: `on: pull_request: branches: [main]`
+  - [x] Job: `quality-checks`
+  - [x] Step: Checkout code
+  - [x] Step: Setup Python 3.11 with `actions/setup-python`
+  - [x] Step: Install dependencies via `pip install -r requirements.txt -r requirements-dev.txt`
+  - [x] Step: Run Ruff lint — `ruff check .`
+  - [x] Step: Run Ruff format check — `ruff format --check .`
+  - [x] Step: Run mypy strict — `mypy --strict app/`
+  - [x] Step: Run pytest unit tests — `pytest tests/ -m "not integration" -v`
+  - [x] Step: Run pytest integration tests — `pytest tests/ -m integration -v` (may require service containers)
+  - [x] Configure test service containers (PostgreSQL with pgvector, MongoDB) for integration tests if needed
 
-- [ ] Task 2: Create `deploy.yml` workflow (AC: 2, 3, 4, 5)
-  - [ ] Trigger: `on: push: branches: [main]`
-  - [ ] Concurrency group to prevent parallel deployments: `concurrency: group: deploy-prod, cancel-in-progress: false`
-  - [ ] Job: `deploy`
-  - [ ] Permissions: `id-token: write`, `contents: read` (for OIDC AWS auth)
+- [x] Task 2: Create `deploy.yml` workflow (AC: 2, 3, 4, 5)
+  - [x] Trigger: `on: push: branches: [main]`
+  - [x] Concurrency group to prevent parallel deployments: `concurrency: group: deploy-prod, cancel-in-progress: false`
+  - [x] Job: `deploy`
+  - [x] Permissions: `id-token: write`, `contents: read` (for OIDC AWS auth)
 
-- [ ] Task 3: Docker build + ECR push step (AC: 2)
-  - [ ] Authenticate to AWS via OIDC (`aws-actions/configure-aws-credentials`)
-  - [ ] Login to ECR (`aws-actions/amazon-ecr-login`)
-  - [ ] Build Docker image with tag: `$ECR_REGISTRY/truerag:$GITHUB_SHA` and `latest`
-  - [ ] Push both tags to ECR
+- [x] Task 3: Docker build + ECR push step (AC: 2)
+  - [x] Authenticate to AWS via OIDC (`aws-actions/configure-aws-credentials`)
+  - [x] Login to ECR (`aws-actions/amazon-ecr-login`)
+  - [x] Build Docker image with tag: `$ECR_REGISTRY/truerag:$GITHUB_SHA` and `latest`
+  - [x] Push both tags to ECR
 
-- [ ] Task 4: Dockerfile (AC: 2)
-  - [ ] Create `Dockerfile` at repo root if not already present
-  - [ ] Base: `python:3.11-slim`
-  - [ ] Install system deps: `libpq-dev` (asyncpg needs it)
-  - [ ] Copy and install `requirements.txt`
-  - [ ] Copy `app/` directory
-  - [ ] Default CMD: `["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "app.main:app", "--bind", "0.0.0.0:8000"]`
-  - [ ] Worker entry point override via ECS task definition command (not in Dockerfile)
-  - [ ] `.dockerignore`: exclude `tests/`, `terraform/`, `.github/`, `*.md`, `.env*`, `__pycache__`
+- [x] Task 4: Dockerfile (AC: 2)
+  - [x] Create `Dockerfile` at repo root if not already present
+  - [x] Base: `python:3.11-slim`
+  - [x] Install system deps: `libpq-dev` (asyncpg needs it)
+  - [x] Copy and install `requirements.txt`
+  - [x] Copy `app/` directory
+  - [x] Default CMD: `["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "app.main:app", "--bind", "0.0.0.0:8000"]`
+  - [x] Worker entry point override via ECS task definition command (not in Dockerfile)
+  - [x] `.dockerignore`: exclude `tests/`, `terraform/`, `.github/`, `*.md`, `.env*`, `__pycache__`
 
-- [ ] Task 5: ECS rolling deployment step (AC: 2, 4)
-  - [ ] Update ECS service `truerag-api` with new image: `aws ecs update-service --cluster truerag --service truerag-api --force-new-deployment`
-  - [ ] Update ECS service `truerag-worker` with new image
-  - [ ] Wait for API service to reach steady state: `aws ecs wait services-stable --cluster truerag --services truerag-api`
-  - [ ] Timeout for wait: 10 minutes
+- [x] Task 5: ECS rolling deployment step (AC: 2, 4)
+  - [x] Update ECS service `truerag-api` with new image: `aws ecs update-service --cluster truerag --service truerag-api --force-new-deployment`
+  - [x] Update ECS service `truerag-worker` with new image
+  - [x] Wait for API service to reach steady state: `aws ecs wait services-stable --cluster truerag --services truerag-api`
+  - [x] Timeout for wait: 10 minutes
 
-- [ ] Task 6: RAGAS eval gate step — trigger eval run (AC: 2, 3)
-  - [ ] Read `EVAL_AGENT_ID` from GitHub Actions secret (provisioned out-of-band)
-  - [ ] Read `TRUERAG_API_URL` from GitHub Actions secret (production API endpoint)
-  - [ ] Read `TRUERAG_API_KEY` from GitHub Actions secret (eval agent's tenant API key)
-  - [ ] POST to `$TRUERAG_API_URL/v1/agents/$EVAL_AGENT_ID/eval/run`
-  - [ ] Capture `run_id` from response body
+- [x] Task 6: RAGAS eval gate step — trigger eval run (AC: 2, 3)
+  - [x] Read `EVAL_AGENT_ID` from GitHub Actions secret (provisioned out-of-band)
+  - [x] Read `TRUERAG_API_URL` from GitHub Actions secret (production API endpoint)
+  - [x] Read `TRUERAG_API_KEY` from GitHub Actions secret (eval agent's tenant API key)
+  - [x] POST to `$TRUERAG_API_URL/v1/agents/$EVAL_AGENT_ID/eval/run`
+  - [x] Capture `run_id` from response body
 
-- [ ] Task 7: RAGAS eval gate step — poll for results (AC: 4, 5)
-  - [ ] Poll `GET $TRUERAG_API_URL/v1/agents/$EVAL_AGENT_ID/eval/history?run_id=$RUN_ID`
-  - [ ] Poll interval: 30 seconds
-  - [ ] Timeout: `EVAL_TIMEOUT_MINUTES` variable (default 10 minutes = 20 polls)
-  - [ ] Exit with failure if timeout exceeded
-  - [ ] Extract `faithfulness` score from response
+- [x] Task 7: RAGAS eval gate step — poll for results (AC: 4, 5)
+  - [x] Poll `GET $TRUERAG_API_URL/v1/agents/$EVAL_AGENT_ID/eval/history?run_id=$RUN_ID`
+  - [x] Poll interval: 30 seconds
+  - [x] Timeout: `EVAL_TIMEOUT_MINUTES` variable (default 10 minutes = 20 polls)
+  - [x] Exit with failure if timeout exceeded
+  - [x] Extract `faithfulness` score from response
 
-- [ ] Task 8: RAGAS eval gate step — threshold check (AC: 4)
-  - [ ] Compare `faithfulness` score to `RAGAS_FAITHFULNESS_THRESHOLD` secret/variable (default 0.6)
-  - [ ] If score >= threshold: log success, continue
-  - [ ] If score < threshold: log failure with score + threshold values, `exit 1`
-  - [ ] On failure: optionally trigger ECS service rollback (`aws ecs update-service --task-definition <previous>`) — document if implemented or deferred
+- [x] Task 8: RAGAS eval gate step — threshold check (AC: 4)
+  - [x] Compare `faithfulness` score to `RAGAS_FAITHFULNESS_THRESHOLD` secret/variable (default 0.6)
+  - [x] If score >= threshold: log success, continue
+  - [x] If score < threshold: log failure with score + threshold values, `exit 1`
+  - [x] On failure: optionally trigger ECS service rollback (`aws ecs update-service --task-definition <previous>`) — document if implemented or deferred
 
-- [ ] Task 9: GitHub Actions secrets documentation (AC: 3)
-  - [ ] Document in `docs/adrs/adr-019-cicd-eval-gate-strategy.md`:
+- [x] Task 9: GitHub Actions secrets documentation (AC: 3)
+  - [x] Document in `docs/adrs/adr-019-cicd-eval-gate-strategy.md`:
     - Required GitHub Actions secrets: `AWS_ROLE_ARN`, `ECR_REGISTRY`, `TRUERAG_API_URL`, `TRUERAG_API_KEY`, `EVAL_AGENT_ID`, `RAGAS_FAITHFULNESS_THRESHOLD`
     - Rationale for dedicated prod eval agent (no staging env in v1)
     - Eval agent provisioning steps (seed script or manual API calls)
     - Rollback strategy: manual re-trigger vs automated rollback
 
-- [ ] Task 10: AWS OIDC IAM role for GitHub Actions (AC: 2)
-  - [ ] Add `terraform/modules/github_oidc/` or inline in prod environment:
+- [x] Task 10: AWS OIDC IAM role for GitHub Actions (AC: 2)
+  - [x] Add `terraform/modules/github_oidc/` or inline in prod environment:
     - IAM OIDC provider for `token.actions.githubusercontent.com`
     - IAM role `truerag-github-actions` with trust policy for this repo's main branch
     - Permissions: ECR push, ECS update-service, ECS register-task-definition, ECS describe-services, ECS wait
@@ -241,10 +241,37 @@ These must all pass before pushing to PR.
 
 ### Agent Model Used
 
-claude-sonnet-4-6
+GPT-5 Codex
 
 ### Debug Log References
 
+- Added CI workflow: `.github/workflows/ci.yml`
+- Added deploy workflow: `.github/workflows/deploy.yml`
+- Implemented eval gate script + tests: `scripts/eval_gate.py`, `tests/scripts/test_eval_gate.py`
+- Added Docker assets: `Dockerfile`, `.dockerignore`
+- Added ADR-019 and Terraform OIDC module
+- Validation commands run from local environment and `.venv`
+
 ### Completion Notes List
 
+- Implemented PR quality gate workflow with Ruff, Ruff format check, mypy strict, and split pytest unit/integration jobs with PostgreSQL+MongoDB service containers.
+- Implemented deploy workflow with OIDC auth, ECR build/push, ECS task-definition image updates, rolling service deploy, service-stable waits, and blocking eval gate execution.
+- Implemented `scripts/eval_gate.py` for both synchronous and asynchronous eval paths, including timeout and faithfulness threshold gating.
+- Documented production dedicated eval-agent strategy, required secrets, provisioning, and rollback posture in ADR-019.
+- Added Terraform module for GitHub OIDC provider and `truerag-github-actions` IAM role/policy for ECR and ECS deployment operations.
+- Automated rollback is deferred; fail-fast gate behavior is documented per story requirement.
+
 ### File List
+
+- .github/workflows/ci.yml
+- .github/workflows/deploy.yml
+- Dockerfile
+- .dockerignore
+- scripts/__init__.py
+- scripts/eval_gate.py
+- tests/scripts/test_eval_gate.py
+- docs/adrs/adr-019-cicd-eval-gate-strategy.md
+- terraform/modules/github_oidc/main.tf
+- terraform/modules/github_oidc/variables.tf
+- terraform/modules/github_oidc/outputs.tf
+- requirements.txt

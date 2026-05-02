@@ -6,7 +6,7 @@ import pytest
 from app.core.errors import ProviderUnavailableError
 from app.models.agent import AgentDocument
 from app.models.chunk import ChunkMetadata, VectorResult
-from app.pipelines.query.pipeline import _execute_retrieval
+from app.pipelines.query.pipeline import _execute_retrieval, run_query_pipeline
 
 
 def _make_agent(retrieval_mode: str = "dense") -> AgentDocument:
@@ -127,3 +127,106 @@ async def test_hybrid_failure_raises_provider_unavailable_no_partial_results() -
         pytest.raises(ProviderUnavailableError, match="Hybrid retrieval failed"),
     ):
         await _execute_retrieval("q", 2, agent, None)
+
+
+@pytest.mark.asyncio
+async def test_run_query_pipeline_direct_route_skips_retrieval_and_returns_empty_citations() -> None:
+    agent = _make_agent("dense")
+
+    with (
+        patch("app.pipelines.query.pipeline.scrub_pii", return_value="clean query"),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="direct")),
+        patch("app.pipelines.query.pipeline._execute_direct_generation", AsyncMock(return_value="direct answer")),
+        patch("app.pipelines.query.pipeline._execute_retrieval", AsyncMock()) as retrieval_mock,
+    ):
+        response = await run_query_pipeline(query="raw", top_k=5, agent=agent)
+
+    retrieval_mock.assert_not_awaited()
+    assert response.answer == "direct answer"
+    assert response.citations == []
+    assert response.confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_run_query_pipeline_retrieval_route_with_query_rewrite_calls_rewriter_before_retrieval() -> None:
+    agent = _make_agent("dense")
+    agent.query_rewrite = True
+
+    with (
+        patch("app.pipelines.query.pipeline.scrub_pii", return_value="clean query"),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch("app.pipelines.query.pipeline.rewrite_query", AsyncMock(return_value="rewritten query")) as rewrite_mock,
+        patch(
+            "app.pipelines.query.pipeline._execute_retrieval",
+            AsyncMock(return_value=[_result("a", 0.9)]),
+        ) as retrieval_mock,
+        patch("app.pipelines.query.pipeline._execute_rerank", return_value=[_result("a", 0.9)]),
+        patch("app.pipelines.query.pipeline._execute_generation", AsyncMock(return_value="answer")),
+    ):
+        response = await run_query_pipeline(query="raw", top_k=5, agent=agent)
+
+    rewrite_mock.assert_awaited_once_with("clean query", agent)
+    retrieval_mock.assert_awaited_once_with(
+        scrubbed_query="rewritten query",
+        top_k=5,
+        agent=agent,
+        filters=None,
+    )
+    assert response.answer == "answer"
+
+
+@pytest.mark.asyncio
+async def test_run_query_pipeline_retrieval_route_without_query_rewrite_does_not_call_rewriter() -> None:
+    agent = _make_agent("dense")
+    agent.query_rewrite = False
+
+    with (
+        patch("app.pipelines.query.pipeline.scrub_pii", return_value="clean query"),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch("app.pipelines.query.pipeline.rewrite_query", AsyncMock(return_value="rewritten query")) as rewrite_mock,
+        patch(
+            "app.pipelines.query.pipeline._execute_retrieval",
+            AsyncMock(return_value=[_result("a", 0.9)]),
+        ) as retrieval_mock,
+        patch("app.pipelines.query.pipeline._execute_rerank", return_value=[_result("a", 0.9)]),
+        patch("app.pipelines.query.pipeline._execute_generation", AsyncMock(return_value="answer")),
+    ):
+        await run_query_pipeline(query="raw", top_k=5, agent=agent)
+
+    rewrite_mock.assert_not_awaited()
+    retrieval_mock.assert_awaited_once_with(
+        scrubbed_query="clean query",
+        top_k=5,
+        agent=agent,
+        filters=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_query_pipeline_rewriter_fallback_uses_original_query_for_retrieval() -> None:
+    agent = _make_agent("dense")
+    agent.query_rewrite = True
+
+    with (
+        patch("app.pipelines.query.pipeline.scrub_pii", return_value="clean query"),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch(
+            "app.pipelines.query.pipeline.rewrite_query",
+            AsyncMock(return_value="clean query"),
+        ),
+        patch(
+            "app.pipelines.query.pipeline._execute_retrieval",
+            AsyncMock(return_value=[_result("a", 0.9)]),
+        ) as retrieval_mock,
+        patch("app.pipelines.query.pipeline._execute_rerank", return_value=[_result("a", 0.9)]),
+        patch("app.pipelines.query.pipeline._execute_generation", AsyncMock(return_value="answer")),
+    ):
+        response = await run_query_pipeline(query="raw", top_k=5, agent=agent)
+
+    retrieval_mock.assert_awaited_once_with(
+        scrubbed_query="clean query",
+        top_k=5,
+        agent=agent,
+        filters=None,
+    )
+    assert response.answer == "answer"

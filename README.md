@@ -6,6 +6,7 @@ Production-grade open-source RAG Engine. Part of TruePlatform.
 
 ```bash
 pip install -r requirements-dev.txt
+python -m spacy download en_core_web_sm
 uvicorn app.main:app --reload
 ```
 

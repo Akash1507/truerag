@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-02T00:00:00Z  # updated: epic-10 set in-progress; stories 10-1..10-4 ready-for-dev
+last_updated: 2026-05-03T00:00:00Z  # updated: story 10-1 moved to review
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -128,8 +128,8 @@ development_status:
 
   # Epic 10: Production Deployment & Operations
   epic-10: in-progress
-  10-1-terraform-infrastructure-core-aws-services: ready-for-dev
-  10-2-ecs-fargate-services-api-and-worker-task-definitions: ready-for-dev
-  10-3-cloudwatch-alarms-and-ragas-regression-alerting: ready-for-dev
-  10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: ready-for-dev
+  10-1-terraform-infrastructure-core-aws-services: review
+  10-2-ecs-fargate-services-api-and-worker-task-definitions: review
+  10-3-cloudwatch-alarms-and-ragas-regression-alerting: review
+  10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: review
   epic-10-retrospective: optional

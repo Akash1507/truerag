@@ -253,6 +253,42 @@ async def test_regression_metric_failure_does_not_raise() -> None:
 
 
 @pytest.mark.asyncio
+async def test_write_regression_metric_uses_story_10_3_contract() -> None:
+    put_metric_data = AsyncMock()
+    cloudwatch_client = MagicMock()
+    cloudwatch_client.put_metric_data = put_metric_data
+
+    client_context = AsyncMock()
+    client_context.__aenter__.return_value = cloudwatch_client
+    client_context.__aexit__.return_value = None
+
+    session = MagicMock()
+    session.client.return_value = client_context
+
+    await eval_service._write_regression_metric(
+        tenant_id="tenant-abc",
+        agent_id="agent-xyz",
+        faithfulness=0.42,
+        session=session,
+    )
+
+    put_metric_data.assert_awaited_once_with(
+        Namespace="TrueRAG/Eval",
+        MetricData=[
+            {
+                "MetricName": "RAGASFaithfulness",
+                "Dimensions": [
+                    {"Name": "TenantId", "Value": "tenant-abc"},
+                    {"Name": "AgentId", "Value": "agent-xyz"},
+                ],
+                "Value": 0.42,
+                "Unit": "None",
+            }
+        ],
+    )
+
+
+@pytest.mark.asyncio
 async def test_experiment_triggered_alert_true_on_regression() -> None:
     agent = _make_agent()
     dataset = _make_dataset(1)

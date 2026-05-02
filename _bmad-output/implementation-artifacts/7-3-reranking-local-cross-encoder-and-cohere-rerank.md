@@ -44,29 +44,29 @@ Then they are available by config string (`cross_encoder`, `cohere`) alongside t
   - [x] Migration note: existing agents in MongoDB missing this field will default to 20 via Pydantic default
 
 - [x] **Task 3: Implement CrossEncoderReranker**
-  - [ ] File: `app/providers/rerankers/cross_encoder.py`
-  - [ ] Class `CrossEncoderReranker(Reranker)` — implements `rerank(query, chunks, top_k) -> list[Chunk]`
-  - [ ] Use `sentence-transformers` `CrossEncoder` class with model `cross-encoder/ms-marco-MiniLM-L-6-v2`
-  - [ ] `__init__`: load model once at instantiation — `self._model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")`
-  - [ ] `rerank()`: call `self._model.predict([(query, chunk.text) for chunk in chunks])`; sort chunks by score descending; return `chunks[:top_k]`
-  - [ ] Sync method (matches `Reranker` interface which is not async)
-  - [ ] If `len(chunks) <= top_k`, return all chunks sorted by score (no truncation needed but sort still applies)
+  - [x] File: `app/providers/rerankers/cross_encoder.py`
+  - [x] Class `CrossEncoderReranker(Reranker)` — implements `rerank(query, chunks, top_k) -> list[Chunk]`
+  - [x] Use `sentence-transformers` `CrossEncoder` class with model `cross-encoder/ms-marco-MiniLM-L-6-v2`
+  - [x] `__init__`: load model once at instantiation — `self._model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")`
+  - [x] `rerank()`: call `self._model.predict([(query, chunk.text) for chunk in chunks])`; sort chunks by score descending; return `chunks[:top_k]`
+  - [x] Sync method (matches `Reranker` interface which is not async)
+  - [x] If `len(chunks) <= top_k`, return all chunks sorted by score (no truncation needed but sort still applies)
 
 - [x] **Task 4: Implement CohereReranker**
-  - [ ] File: `app/providers/rerankers/cohere.py`
-  - [ ] Class `CohereReranker(Reranker)` — implements `rerank(query, chunks, top_k) -> list[Chunk]`
-  - [ ] `__init__`: accept no args (API key fetched at call time)
-  - [ ] `rerank()`:
+  - [x] File: `app/providers/rerankers/cohere.py`
+  - [x] Class `CohereReranker(Reranker)` — implements `rerank(query, chunks, top_k) -> list[Chunk]`
+  - [x] `__init__`: accept no args (API key fetched at call time)
+  - [x] `rerank()`:
     1. Fetch Cohere API key: `api_key = await get_secret("cohere/api_key")` — but wait, `rerank()` is sync per interface; use `asyncio.get_event_loop().run_in_executor(None, ...)` OR fetch key at init via sync path
     2. **Recommended approach**: fetch API key in `__init__` at instantiation time (via `app/utils/secrets.py` sync-compatible wrapper); instantiation happens at request time via registry
     3. Call Cohere Rerank API: `cohere.Client(api_key).rerank(model="rerank-english-v3.0", query=query, documents=[c.text for c in chunks], top_n=top_k)`
     4. Map Cohere response back to original `Chunk` objects in reranked order
     5. Apply `@retry` decorator from `app/utils/retry.py` to the Cohere API call
-  - [ ] **IMPORTANT**: `Reranker.rerank()` interface is sync — if async secrets access is required, consult the architecture. Use `app/utils/secrets.py` — it may provide a sync-compatible path or the reranker instantiation happens in async context already
+  - [x] **IMPORTANT**: `Reranker.rerank()` interface is sync — if async secrets access is required, consult the architecture. Use `app/utils/secrets.py` — it may provide a sync-compatible path or the reranker instantiation happens in async context already
 
 - [x] **Task 5: Register both rerankers**
-  - [ ] File: `app/providers/rerankers/__init__.py` — add exports for new classes
-  - [ ] File: `app/providers/registry.py` — update `RERANKER_REGISTRY`:
+  - [x] File: `app/providers/rerankers/__init__.py` — add exports for new classes
+  - [x] File: `app/providers/registry.py` — update `RERANKER_REGISTRY`:
     ```python
     RERANKER_REGISTRY: dict[str, type[Reranker]] = {
         "none": PassthroughReranker,
@@ -74,13 +74,13 @@ Then they are available by config string (`cross_encoder`, `cohere`) alongside t
         "cohere": CohereReranker,
     }
     ```
-  - [ ] Remove the `# Populated in Epic 7` comment
+  - [x] Remove the `# Populated in Epic 7` comment
 
 - [x] **Task 6: Update query pipeline to use rerank_pool_size**
-  - [ ] File: `app/pipelines/query/pipeline.py`
-  - [ ] Change retrieval call to fetch `agent.rerank_pool_size` candidates when `agent.reranker != "none"`, else fetch `agent.top_k` candidates
-  - [ ] After retrieval, call `reranker.rerank(query, retrieved_chunks, top_k=agent.top_k)` — this was already wired in story 5-3; verify `rerank_pool_size` is passed to retrieval, not to reranker
-  - [ ] Add `reranker_ms` to per-stage latency log (extend story 5-5 pattern in `extra_data`)
+  - [x] File: `app/pipelines/query/pipeline.py`
+  - [x] Change retrieval call to fetch `agent.rerank_pool_size` candidates when `agent.reranker != "none"`, else fetch `agent.top_k` candidates
+  - [x] After retrieval, call `reranker.rerank(query, retrieved_chunks, top_k=agent.top_k)` — this was already wired in story 5-3; verify `rerank_pool_size` is passed to retrieval, not to reranker
+  - [x] Add `reranker_ms` to per-stage latency log (extend story 5-5 pattern in `extra_data`)
 
 - [x] **Task 7: Add dependencies**
   - [x] `pyproject.toml` / `requirements.txt`: add `sentence-transformers>=3.0` (if not already added by story 7-1), `cohere>=5.0`
@@ -211,7 +211,7 @@ GPT-5 Codex
 - `tests/providers/rerankers/test_cross_encoder_reranker.py` — created
 - `tests/providers/rerankers/test_cohere_reranker.py` — created
 - `tests/providers/rerankers/test_reranker_registry.py` — created
-- `tests/pipelines/test_query_pipeline.py` — modified (rerank-related tests only)
+- `tests/pipelines/query/test_pipeline.py` — modified (rerank-related tests only)
 - `tests/providers/test_registry.py` — modified
 - `pyproject.toml` — modified
 - `requirements.txt` — modified

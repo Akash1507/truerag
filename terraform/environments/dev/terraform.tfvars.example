@@ -1,0 +1,17 @@
+aws_region                    = "us-east-1"
+aws_account_id                = "123456789012"
+vpc_cidr                      = "10.20.0.0/16"
+alb_certificate_arn           = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+document_archive_bucket_name  = "truerag-dev-doc-archive"
+rds_instance_class            = "db.t4g.micro"
+rds_allocated_storage         = 20
+enable_atlas_peering          = false
+atlas_project_id              = ""
+atlas_container_id            = ""
+atlas_cidr_block              = ""
+mongodb_atlas_public_key      = ""
+mongodb_atlas_private_key     = ""
+tags = {
+  Environment = "dev"
+  Project     = "truerag"
+}
