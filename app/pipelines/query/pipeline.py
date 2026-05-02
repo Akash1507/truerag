@@ -1,8 +1,12 @@
 import time
+from statistics import mean
+from typing import Literal
 
 from app.core.errors import ProviderUnavailableError
 from app.models.agent import AgentDocument
+from app.models.chunk import VectorResult
 from app.models.query import Citation, QueryResponse
+from app.pipelines.query.generator import generate_answer
 from app.providers.registry import EMBEDDING_REGISTRY, VECTOR_STORE_REGISTRY
 from app.utils.observability import get_logger
 from app.utils.pii import scrub_pii
@@ -15,6 +19,7 @@ async def run_query_pipeline(
     top_k: int,
     agent: AgentDocument,
     filters: dict[str, str] | None = None,
+    output_format: Literal["text", "json"] | None = None,
 ) -> QueryResponse:
     t0 = time.perf_counter()
     scrubbed_query = scrub_pii(query)
@@ -25,14 +30,27 @@ async def run_query_pipeline(
             "extra_data": {"agent_id": agent.agent_id, "tenant_id": agent.tenant_id},
         },
     )
-    response = await _execute_retrieval(
+    results = await _execute_retrieval(
         scrubbed_query=scrubbed_query,
         top_k=top_k,
         agent=agent,
         filters=filters,
     )
+    answer = ""
+    if results:
+        answer = await _execute_generation(
+            scrubbed_query=scrubbed_query,
+            results=results,
+            agent=agent,
+            output_format=output_format,
+        )
+    confidence = _compute_confidence(results)
+    citations = [
+        Citation(document_name=result.metadata.document_id, chunk_text=result.text, page_reference=None)
+        for result in results
+    ]
     latency_ms = round((time.perf_counter() - t0) * 1000)
-    return response.model_copy(update={"latency_ms": latency_ms})
+    return QueryResponse(answer=answer, confidence=confidence, citations=citations, latency_ms=latency_ms)
 
 
 async def _execute_retrieval(
@@ -40,7 +58,7 @@ async def _execute_retrieval(
     top_k: int,
     agent: AgentDocument,
     filters: dict[str, str] | None,
-) -> QueryResponse:
+) -> list[VectorResult]:
     embedder_cls = EMBEDDING_REGISTRY.get(agent.embedding_provider)
     if not embedder_cls:
         raise ProviderUnavailableError(f"Embedding provider '{agent.embedding_provider}' not registered")
@@ -84,8 +102,24 @@ async def _execute_retrieval(
         },
     )
 
-    citations = [
-        Citation(document_name=result.metadata.document_id, chunk_text=result.text, page_reference=None)
-        for result in results
-    ]
-    return QueryResponse(answer="", confidence=0.0, citations=citations, latency_ms=0)
+    return results
+
+
+async def _execute_generation(
+    scrubbed_query: str,
+    results: list[VectorResult],
+    agent: AgentDocument,
+    output_format: Literal["text", "json"] | None,
+) -> str:
+    return await generate_answer(
+        query=scrubbed_query,
+        results=results,
+        llm_provider_name=agent.llm_provider,
+        output_format=output_format,
+    )
+
+
+def _compute_confidence(results: list[VectorResult]) -> float:
+    if not results:
+        return 0.0
+    return max(0.0, min(1.0, mean(result.score for result in results)))

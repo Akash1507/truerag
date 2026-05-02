@@ -2,7 +2,7 @@ import re
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app.core.auth import _hash_api_key
@@ -24,6 +24,7 @@ def make_test_app() -> FastAPI:
     test_app.add_middleware(RequestIDMiddleware)
     test_app.add_exception_handler(TrueRAGError, truerag_exception_handler)  # type: ignore[arg-type]
     test_app.add_exception_handler(Exception, generic_exception_handler)
+    test_app.state.audit_markers = []
 
     @test_app.get("/provider-unavailable")
     async def provider_unavailable_route() -> None:
@@ -40,6 +41,24 @@ def make_test_app() -> FastAPI:
     @test_app.get("/runtime-error")
     async def runtime_error_route() -> None:
         raise RuntimeError("unexpected boom")
+
+    @test_app.get("/provider-unavailable-with-background-task")
+    async def provider_unavailable_with_background_task(
+        request: Request,
+        background_tasks: BackgroundTasks,
+    ) -> None:
+        background_tasks.add_task(test_app.state.audit_markers.append, "provider")
+        request.state.background_tasks = background_tasks
+        raise ProviderUnavailableError("background task test")
+
+    @test_app.get("/runtime-error-with-background-task")
+    async def runtime_error_with_background_task(
+        request: Request,
+        background_tasks: BackgroundTasks,
+    ) -> None:
+        background_tasks.add_task(test_app.state.audit_markers.append, "generic")
+        request.state.background_tasks = background_tasks
+        raise RuntimeError("background runtime error")
 
     return test_app
 
@@ -99,6 +118,20 @@ def test_error_envelope_shape_no_extra_keys() -> None:
     response = client.get("/provider-unavailable")
     error = response.json()["error"]
     assert set(error.keys()) == {"code", "message", "request_id"}
+
+
+def test_truerag_exception_response_runs_background_tasks() -> None:
+    client.app.state.audit_markers.clear()
+    response = client.get("/provider-unavailable-with-background-task")
+    assert response.status_code == 503
+    assert client.app.state.audit_markers == ["provider"]
+
+
+def test_generic_exception_response_runs_background_tasks() -> None:
+    client.app.state.audit_markers.clear()
+    response = client.get("/runtime-error-with-background-task")
+    assert response.status_code == 500
+    assert client.app.state.audit_markers == ["generic"]
 
 
 # --- Real app wiring tests ---

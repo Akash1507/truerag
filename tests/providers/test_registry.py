@@ -7,6 +7,7 @@ from app.providers.registry import (
     VECTOR_STORE_REGISTRY,
 )
 from app.providers.rerankers.passthrough import PassthroughReranker
+from app.providers.llm.anthropic import AnthropicLLMProvider
 from app.providers.vector_stores.pgvector import PgVectorStore
 
 
@@ -29,10 +30,10 @@ def test_none_key_returns_passthrough_instance() -> None:
 
 
 def test_registry_entries_for_current_epic() -> None:
-    """Current stories register pgvector and openai providers."""
+    """Current stories register pgvector/openai/anthropic providers."""
     assert VECTOR_STORE_REGISTRY == {"pgvector": PgVectorStore}
     assert "openai" in EMBEDDING_REGISTRY
-    assert LLM_REGISTRY == {}
+    assert LLM_REGISTRY == {"anthropic": AnthropicLLMProvider}
 
 
 def test_chunking_registry_has_fixed_size() -> None:

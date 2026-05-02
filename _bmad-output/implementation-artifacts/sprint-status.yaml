@@ -1,5 +1,5 @@
 # generated: 2026-04-18T00:00:00Z
-# last_updated: 2026-05-02T00:00:00+05:30  # updated: story 5-2 done
+# last_updated: 2026-05-02T15:48:11+05:30  # updated: story 5-4 done
 # project: truerag
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-02T00:00:00+05:30  # updated: story 5-2 done
+last_updated: 2026-05-02T15:48:11+05:30  # updated: story 5-4 done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -88,8 +88,8 @@ development_status:
   epic-5: in-progress
   5-1-query-endpoint-and-pii-scrubbing: done
   5-2-dense-vector-retrieval-with-metadata-filtering: done
-  5-3-answer-generation-with-citations-confidence-score-and-structured-output: backlog
-  5-4-query-audit-logging: backlog
+  5-3-answer-generation-with-citations-confidence-score-and-structured-output: done
+  5-4-query-audit-logging: done
   5-5-end-to-end-query-latency-validation: backlog
   epic-5-retrospective: optional
 

@@ -1,10 +1,18 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from fastapi.background import BackgroundTasks
 
 from app.core.errors import ErrorCode, TrueRAGError
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
+
+
+def _response_background_tasks(request: Request) -> BackgroundTasks | None:
+    background_tasks = getattr(request.state, "background_tasks", None)
+    if isinstance(background_tasks, BackgroundTasks) and background_tasks.tasks:
+        return background_tasks
+    return None
 
 
 async def truerag_exception_handler(request: Request, exc: TrueRAGError) -> JSONResponse:
@@ -14,6 +22,7 @@ async def truerag_exception_handler(request: Request, exc: TrueRAGError) -> JSON
         content={
             "error": {"code": exc.code.value, "message": exc.message, "request_id": request_id}
         },
+        background=_response_background_tasks(request),
     )
 
 
@@ -32,4 +41,5 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
                 "request_id": request_id,
             }
         },
+        background=_response_background_tasks(request),
     )

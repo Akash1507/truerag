@@ -6,7 +6,7 @@ import pytest
 from app.core.errors import NamespaceViolationError, ProviderUnavailableError
 from app.models.agent import AgentDocument
 from app.models.chunk import ChunkMetadata, VectorResult
-from app.models.query import Citation, QueryResponse
+from app.models.query import Citation
 from app.pipelines.query.pipeline import run_query_pipeline
 
 
@@ -38,15 +38,11 @@ async def test_pipeline_uses_scrubbed_query_for_downstream() -> None:
         return_value="<SCRUBBED>",
     ) as mock_scrub, patch(
         "app.pipelines.query.pipeline._execute_retrieval",
-        AsyncMock(
-            return_value=QueryResponse(
-                answer="",
-                confidence=0.0,
-                citations=[],
-                latency_ms=0,
-            )
-        ),
-    ) as mock_execute:
+        AsyncMock(return_value=[]),
+    ) as mock_execute, patch(
+        "app.pipelines.query.pipeline._execute_generation",
+        AsyncMock(return_value=""),
+    ):
         await run_query_pipeline("Call me at 555-123-4567", 3, agent)
 
     mock_scrub.assert_called_once_with("Call me at 555-123-4567")
@@ -68,17 +64,20 @@ async def test_pipeline_calls_scrub_once_before_downstream() -> None:
         top_k: int,
         agent: AgentDocument,
         filters: dict[str, str] | None,
-    ) -> QueryResponse:
+    ) -> list[VectorResult]:
         _ = scrubbed_query
         _ = top_k
         _ = agent
         _ = filters
         call_order.append("downstream")
-        return QueryResponse(answer="", confidence=0.0, citations=[], latency_ms=0)
+        return []
 
     with patch("app.pipelines.query.pipeline.scrub_pii", side_effect=_scrub), patch(
         "app.pipelines.query.pipeline._execute_retrieval",
         side_effect=_downstream,
+    ), patch(
+        "app.pipelines.query.pipeline._execute_generation",
+        AsyncMock(return_value=""),
     ):
         await run_query_pipeline("Alice alice@example.com", 4, agent)
 
@@ -116,6 +115,7 @@ async def test_pipeline_embeds_and_queries_vector_store() -> None:
         patch("app.pipelines.query.pipeline.scrub_pii", return_value="<SCRUBBED>"),
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
     ):
         await run_query_pipeline("my query", 5, agent)
 
@@ -141,11 +141,12 @@ async def test_pipeline_maps_results_to_citations() -> None:
     with (
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
     ):
         response = await run_query_pipeline("my query", 5, agent)
 
-    assert response.answer == ""
-    assert response.confidence == 0.0
+    assert response.answer == "Generated answer"
+    assert response.confidence == 0.92
     assert response.citations == [
         Citation(document_name="doc-1", chunk_text="chunk one", page_reference=None),
         Citation(document_name="doc-2", chunk_text="chunk two", page_reference=None),
@@ -166,6 +167,7 @@ async def test_pipeline_passes_filters_to_vector_store() -> None:
     with (
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
     ):
         await run_query_pipeline("my query", 5, agent, filters=filters)
 
@@ -278,6 +280,7 @@ async def test_pipeline_emits_embedding_and_retrieval_logs() -> None:
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
         patch("app.pipelines.query.pipeline.logger") as mock_logger,
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
     ):
         await run_query_pipeline("my query", 5, agent)
 
@@ -312,7 +315,50 @@ async def test_pipeline_no_filters_passes_none_to_vector_store() -> None:
     with (
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
     ):
         await run_query_pipeline("my query", 5, agent)
 
     mock_vector_store.query.assert_awaited_once_with("tenant-1_agent-1", [0.1, 0.2, 0.3], 5, None)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_confidence_zero_when_no_results() -> None:
+    agent = _make_agent()
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=[])
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="")) as mock_generate,
+    ):
+        response = await run_query_pipeline("my query", 5, agent)
+
+    assert response.answer == ""
+    assert response.confidence == 0.0
+    mock_generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_threads_output_format_to_generation() -> None:
+    agent = _make_agent()
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=[_make_vector_result()])
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value='{"answer":"ok"}')) as mock_generate,
+    ):
+        await run_query_pipeline("my query", 5, agent, output_format="json")
+
+    assert mock_generate.await_args.kwargs["output_format"] == "json"

@@ -37,5 +37,5 @@ def test_get_embedder_unknown_raises_provider_unavailable() -> None:
 
 
 def test_get_llm_provider_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown LLM provider.*anthropic"):
-        get_llm_provider("anthropic")
+    with pytest.raises(ProviderUnavailableError, match="Unknown LLM provider.*bedrock"):
+        get_llm_provider("bedrock")

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     mongodb_secret_name: str = "truerag/mongodb/uri"
     pgvector_secret_name: str = "truerag/pgvector/dsn"
     openai_api_key_secret_name: str = "truerag/openai/api_key"
+    anthropic_api_key_secret_name: str = "truerag/anthropic/api_key"
 
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "truerag"

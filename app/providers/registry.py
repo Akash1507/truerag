@@ -5,6 +5,7 @@ from app.interfaces.reranker import Reranker
 from app.interfaces.vector_store import VectorStore
 from app.providers.chunking.fixed_size import FixedSizeChunker
 from app.providers.embedding.openai import OpenAIEmbedder
+from app.providers.llm.anthropic import AnthropicLLMProvider
 from app.providers.rerankers.passthrough import PassthroughReranker
 from app.providers.vector_stores.pgvector import PgVectorStore
 
@@ -26,5 +27,5 @@ EMBEDDING_REGISTRY: dict[str, type[EmbeddingProvider]] = {
 }
 
 LLM_REGISTRY: dict[str, type[LLMProvider]] = {
-    # Populated in Epic 5: "anthropic": AnthropicProvider, ...
+    "anthropic": AnthropicLLMProvider,
 }
