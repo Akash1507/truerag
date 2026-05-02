@@ -6,6 +6,8 @@ from app.providers.registry import (
     RERANKER_REGISTRY,
     VECTOR_STORE_REGISTRY,
 )
+from app.providers.rerankers.cohere import CohereReranker
+from app.providers.rerankers.cross_encoder import CrossEncoderReranker
 from app.providers.rerankers.passthrough import PassthroughReranker
 from app.providers.llm.anthropic import AnthropicLLMProvider
 from app.providers.vector_stores.pgvector import PgVectorStore
@@ -42,6 +44,7 @@ def test_chunking_registry_has_fixed_size() -> None:
     assert CHUNKING_REGISTRY["fixed_size"] is FixedSizeChunker
 
 
-def test_reranker_registry_has_exactly_one_entry() -> None:
-    """Only 'none' is registered in Story 1.8; Epic 7 adds more."""
-    assert len(RERANKER_REGISTRY) == 1
+def test_reranker_registry_has_expected_entries() -> None:
+    assert RERANKER_REGISTRY["none"] is PassthroughReranker
+    assert RERANKER_REGISTRY["cross_encoder"] is CrossEncoderReranker
+    assert RERANKER_REGISTRY["cohere"] is CohereReranker

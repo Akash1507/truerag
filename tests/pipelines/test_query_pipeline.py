@@ -3,11 +3,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.errors import NamespaceViolationError, ProviderUnavailableError
+from app.core.errors import ProviderUnavailableError
 from app.models.agent import AgentDocument
 from app.models.chunk import ChunkMetadata, VectorResult
 from app.models.query import Citation
 from app.pipelines.query.pipeline import run_query_pipeline
+
+
+@pytest.fixture(autouse=True)
+def _mock_router_and_rewriter() -> None:
+    with (
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch(
+            "app.pipelines.query.pipeline.rewrite_query",
+            AsyncMock(side_effect=lambda query, _agent: query),
+        ),
+    ):
+        yield
 
 
 def _make_agent() -> AgentDocument:
@@ -21,6 +33,7 @@ def _make_agent() -> AgentDocument:
         llm_provider="anthropic",
         retrieval_mode="dense",
         reranker="none",
+        rerank_pool_size=20,
         top_k=5,
         semantic_cache_enabled=False,
         semantic_cache_threshold=None,
@@ -250,13 +263,13 @@ async def test_pipeline_namespace_violation_propagates() -> None:
     mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
     mock_embedder_cls = MagicMock(return_value=mock_embedder)
     mock_vector_store = AsyncMock()
-    mock_vector_store.query = AsyncMock(side_effect=NamespaceViolationError("namespace mismatch"))
+    mock_vector_store.query = AsyncMock(side_effect=RuntimeError("namespace mismatch"))
     mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
 
     with (
         patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
         patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
-        pytest.raises(NamespaceViolationError, match="namespace mismatch"),
+        pytest.raises(ProviderUnavailableError, match="Dense retrieval failed: namespace mismatch"),
     ):
         await run_query_pipeline("my query", 5, agent)
 
@@ -327,7 +340,67 @@ async def test_pipeline_emits_query_pipeline_log_with_stage_breakdown() -> None:
     query_pipeline_extra = query_pipeline_calls[0].kwargs["extra"]
     assert isinstance(query_pipeline_extra["latency_ms"], int)
     assert isinstance(query_pipeline_extra["extra_data"]["retrieval_ms"], int)
+    assert isinstance(query_pipeline_extra["extra_data"]["reranker_ms"], int)
     assert isinstance(query_pipeline_extra["extra_data"]["generation_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_uses_rerank_pool_size_when_reranker_enabled() -> None:
+    agent = _make_agent()
+    agent.reranker = "cross_encoder"
+    agent.rerank_pool_size = 11
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=[_make_vector_result()])
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.return_value = [_make_vector_result()]
+    mock_reranker_cls = MagicMock(return_value=mock_reranker)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.RERANKER_REGISTRY", {"cross_encoder": mock_reranker_cls}),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")),
+    ):
+        await run_query_pipeline("my query", 5, agent)
+
+    mock_vector_store.query.assert_awaited_once_with("tenant-1_agent-1", [0.1, 0.2, 0.3], 11, None)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_passes_reranked_chunks_to_generation() -> None:
+    agent = _make_agent()
+    agent.reranker = "cross_encoder"
+    mock_embedder = AsyncMock()
+    mock_embedder.embed = AsyncMock(return_value=[[0.1, 0.2, 0.3]])
+    mock_embedder_cls = MagicMock(return_value=mock_embedder)
+    retrieved = [
+        _make_vector_result(document_id="doc-1", chunk_index=0, text="chunk one"),
+        _make_vector_result(document_id="doc-2", chunk_index=1, text="chunk two"),
+    ]
+    reranked = [retrieved[1]]
+    mock_vector_store = AsyncMock()
+    mock_vector_store.query = AsyncMock(return_value=retrieved)
+    mock_vector_store_cls = MagicMock(return_value=mock_vector_store)
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.return_value = reranked
+    mock_reranker_cls = MagicMock(return_value=mock_reranker)
+
+    with (
+        patch("app.pipelines.query.pipeline.EMBEDDING_REGISTRY", {"openai": mock_embedder_cls}),
+        patch("app.pipelines.query.pipeline.VECTOR_STORE_REGISTRY", {"pgvector": mock_vector_store_cls}),
+        patch("app.pipelines.query.pipeline.RERANKER_REGISTRY", {"cross_encoder": mock_reranker_cls}),
+        patch("app.pipelines.query.pipeline.route_query", AsyncMock(return_value="retrieval")),
+        patch("app.pipelines.query.pipeline.generate_answer", AsyncMock(return_value="Generated answer")) as mock_gen,
+    ):
+        await run_query_pipeline("my query", 1, agent)
+
+    assert len(mock_gen.await_args.kwargs["results"]) == 1
+    assert mock_gen.await_args.kwargs["results"][0].metadata.document_id == "doc-2"
 
 
 @pytest.mark.asyncio

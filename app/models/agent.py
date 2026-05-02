@@ -5,7 +5,7 @@ from beanie import Document
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 VALID_CHUNKING_STRATEGIES: frozenset[str] = frozenset(
-    {"fixed_size", "semantic", "hierarchical", "document_aware"}
+    {"fixed_size", "semantic", "hierarchical", "document_aware", "keyword"}
 )
 VALID_VECTOR_STORES: frozenset[str] = frozenset({"pgvector", "qdrant", "pinecone"})
 VALID_EMBEDDING_PROVIDERS: frozenset[str] = frozenset({"openai", "cohere", "bedrock"})
@@ -28,6 +28,8 @@ class AgentDocument(Document):
     llm_provider: str
     retrieval_mode: str
     reranker: str
+    query_rewrite: bool = False
+    rerank_pool_size: int = Field(default=20, ge=1, le=200)
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
@@ -66,6 +68,8 @@ class AgentCreateRequest(BaseModel):
     llm_provider: str
     retrieval_mode: str
     reranker: str
+    query_rewrite: bool = False
+    rerank_pool_size: int = Field(default=20, ge=1, le=200)
     top_k: int = Field(ge=1, le=100)
     tenant_id: str | None = None
     semantic_cache_enabled: bool = False
@@ -90,6 +94,8 @@ class AgentCreateResponse(BaseModel):
     llm_provider: str
     retrieval_mode: str
     reranker: str
+    query_rewrite: bool
+    rerank_pool_size: int
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None
@@ -109,6 +115,8 @@ class AgentConfigUpdateRequest(BaseModel):
     llm_provider: str | None = None
     retrieval_mode: str | None = None
     reranker: str | None = None
+    query_rewrite: bool | None = None
+    rerank_pool_size: int | None = Field(default=None, ge=1, le=200)
     top_k: int | None = Field(default=None, ge=1, le=100)
     semantic_cache_enabled: bool | None = None
     semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -138,6 +146,8 @@ class AgentUpdateResponse(BaseModel):
     llm_provider: str
     retrieval_mode: str
     reranker: str
+    query_rewrite: bool
+    rerank_pool_size: int
     top_k: int
     semantic_cache_enabled: bool
     semantic_cache_threshold: float | None

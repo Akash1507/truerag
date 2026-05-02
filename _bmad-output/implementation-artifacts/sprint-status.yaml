@@ -1,5 +1,5 @@
 # generated: 2026-04-18T00:00:00Z
-# last_updated: 2026-05-02T00:00:00Z  # updated: story 5-5 done
+# last_updated: 2026-05-02T00:00:00Z  # updated: epic-7 and stories 7-1..7-5 marked done
 # project: truerag
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-02T00:00:00Z  # updated: story 5-5 done
+last_updated: 2026-05-02T00:00:00Z  # updated: epic-7 and stories 7-1..7-5 marked done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -102,12 +102,12 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: Advanced Chunking, Retrieval Strategies & Extension Model
-  epic-7: backlog
-  7-1-semantic-hierarchical-and-document-aware-chunking-strategies: backlog
-  7-2-sparse-retrieval-and-hybrid-search-bm25-dense-rrf: backlog
-  7-3-reranking-local-cross-encoder-and-cohere-rerank: backlog
-  7-4-query-rewriting-and-retrieval-routing: backlog
-  7-5-extension-model-validation-new-backend-via-abstract-interface: backlog
+  epic-7: done
+  7-1-semantic-hierarchical-and-document-aware-chunking-strategies: done
+  7-2-sparse-retrieval-and-hybrid-search-bm25-dense-rrf: done
+  7-3-reranking-local-cross-encoder-and-cohere-rerank: done
+  7-4-query-rewriting-and-retrieval-routing: done
+  7-5-extension-model-validation-new-backend-via-abstract-interface: done
   epic-7-retrospective: optional
 
   # Epic 8: Multi-Provider Expansion & Semantic Caching

@@ -1,4 +1,4 @@
-import aioboto3  # type: ignore[import-untyped]
+import aioboto3
 
 from app.core.config import get_settings
 from app.core.errors import ProviderUnavailableError

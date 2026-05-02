@@ -9,6 +9,7 @@ class ChunkMetadata(BaseModel):
     chunking_strategy: str
     timestamp: AwareDatetime
     version: int = Field(ge=0)
+    parent_text: str | None = None
 
 
 class Chunk(BaseModel):

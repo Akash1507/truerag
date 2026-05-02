@@ -27,8 +27,8 @@ def test_get_vector_store_unknown_raises_provider_unavailable() -> None:
 
 
 def test_get_chunker_unknown_raises_provider_unavailable() -> None:
-    with pytest.raises(ProviderUnavailableError, match="Unknown chunking strategy.*semantic"):
-        get_chunker("semantic")
+    with pytest.raises(ProviderUnavailableError, match="Unknown chunking strategy.*unknown"):
+        get_chunker("unknown")
 
 
 def test_get_embedder_unknown_raises_provider_unavailable() -> None:

@@ -23,7 +23,10 @@ dependencies = [
     "python-multipart>=0.0.20,<1.0.0",
     "openai>=1.0.0",
     "anthropic>=0.30.0",
+    "sentence-transformers>=3.0",
+    "cohere>=5.0",
     "beanie>=1.26",
+    "rank-bm25>=0.2",
 ]
 
 [dependency-groups]
@@ -51,6 +54,23 @@ strict = true
 ignore_missing_imports = false
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = [
+    "aioboto3",
+    "anthropic",
+    "asyncpg",
+    "cohere",
+    "openai",
+    "pgvector.asyncpg",
+    "sentence_transformers",
+    "spacy",
+    "tiktoken",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require integration-level dependencies",
+]
