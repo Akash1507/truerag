@@ -29,6 +29,8 @@ dependencies = [
     "rank-bm25>=0.2",
     "qdrant-client>=1.7.0",
     "pinecone>=3.0.0",
+    "loguru>=0.7.0,<1.0.0",
+    "kafka-python-ng>=2.2.0,<3.0.0",
 ]
 
 [dependency-groups]

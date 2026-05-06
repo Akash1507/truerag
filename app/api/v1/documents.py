@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query, Request, UploadFile, status
 
 from app.core.auth import get_current_tenant
 from app.core.config import get_settings
-from app.core.errors import InvalidCursorError
 from app.models.document import (
     DocumentListResponse,
     DocumentStatusResponse,
@@ -10,7 +9,7 @@ from app.models.document import (
     ReindexResponse,
 )
 from app.models.tenant import TenantDocument
-from app.services import ingestion_service
+from app.services.ingestion_service import ingestion_service
 from app.utils.pagination import DEFAULT_PAGE_SIZE
 
 router = APIRouter()
@@ -62,16 +61,12 @@ async def list_documents_route(
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=100),
     caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
 ) -> DocumentListResponse:
-    try:
-        items, next_cursor = await ingestion_service.list_documents(
-            agent_id=agent_id,
-            tenant_id=caller.tenant_id,
-            cursor=cursor,
-            limit=limit,
-        )
-    except ValueError as exc:
-        raise InvalidCursorError(str(exc)) from exc
-    return DocumentListResponse(items=items, next_cursor=next_cursor)
+    return await ingestion_service.list_documents(
+        agent_id=agent_id,
+        tenant_id=caller.tenant_id,
+        cursor=cursor,
+        limit=limit,
+    )
 
 
 @router.post(

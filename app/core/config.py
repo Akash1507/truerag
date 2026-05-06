@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,9 @@ class Settings(BaseSettings):
     bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     aws_endpoint_url: str | None = None
     sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"
+    queue_backend: Literal["sqs", "kafka", "local"] = "sqs"
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_topic: str = "truerag-ingestion"
     s3_document_bucket: str = "truerag-documents"
     dynamodb_audit_table: str = "truerag-audit-log"
     semantic_cache_ttl_hours: int = 24

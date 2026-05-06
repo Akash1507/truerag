@@ -3,7 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from app.core.auth import get_current_tenant
 from app.models.query import QueryRequest, QueryResponse
 from app.models.tenant import TenantDocument
-from app.services import query_service
+from app.services.query_service import query_service
 from app.utils.observability import reset_request_context, set_request_context
 
 router = APIRouter()

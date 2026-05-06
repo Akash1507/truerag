@@ -1,5 +1,5 @@
 # generated: 2026-04-18T00:00:00Z
-# last_updated: 2026-05-02T00:00:00Z  # updated: epic-9 set in-progress; story 9-1 ready-for-dev
+# last_updated: 2026-05-07T00:00:00Z  # updated: sprint-change-proposal-2026-05-07 approved; 5 new stories added
 # project: truerag
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-03T00:00:00Z  # updated: story 8-5 moved to review
+last_updated: 2026-05-07T00:00:00Z  # sprint-change-proposal-2026-05-07 approved; 5 addendum stories added
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -43,7 +43,7 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Platform Foundation & Security Baseline
-  epic-1: done
+  epic-1: in-progress  # reopened: sprint-change-proposal-2026-05-07 addendum stories 1-11, 1-12, 1-13
   1-1-project-scaffold-and-application-skeleton: done
   1-2-core-configuration-and-structured-logging: done
   1-3-error-handling-infrastructure: done
@@ -54,6 +54,9 @@ development_status:
   1-8-abstract-interfaces-and-provider-registry: done
   1-9-semantic-cache-stub: done
   1-10-beanie-odm-dao-layer-and-dynamodb-removal: done
+  1-11-loguru-logging-request-response-middleware-with-masking: review
+  1-12-generic-service-error-decorator: review
+  1-13-class-based-service-architecture-solid-refactor: review
   epic-1-retrospective: optional
 
   # Epic 2: Tenant & Agent Lifecycle Management
@@ -72,6 +75,7 @@ development_status:
   3-2-sqs-consumer-worker-and-ingestion-job-status-tracking: done
   3-3-ingestion-status-polling-and-document-listing: done
   3-4-pii-scrubbing-at-ingestion: done
+  3-5-pluggable-queue-backend-sqs-kafka-local: review
   epic-3-retrospective: optional
 
   # Epic 4: Chunking, Embedding & Vector Store Namespace Isolation
@@ -132,4 +136,5 @@ development_status:
   10-2-ecs-fargate-services-api-and-worker-task-definitions: review
   10-3-cloudwatch-alarms-and-ragas-regression-alerting: review
   10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: review
+  10-5-local-development-docker-compose: review
   epic-10-retrospective: optional

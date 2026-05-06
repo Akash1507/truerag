@@ -12,16 +12,16 @@ from app.core.auth import AuthMiddleware
 from app.core.config import get_settings
 from app.core.errors import TrueRAGError
 from app.core.exception_handlers import generic_exception_handler, truerag_exception_handler
-from app.core.middleware import RequestIDMiddleware
+from app.core.middleware import RequestIDMiddleware, RequestResponseLoggingMiddleware
 from app.core.rate_limiter import RateLimiterMiddleware
 from app.models.agent import AgentDocument
 from app.models.document import DocumentRecord
-from app.models.ingestion_job import IngestionJob
 from app.models.eval import EvalDataset, EvalExperiment
+from app.models.ingestion_job import IngestionJob
 from app.models.query_cost import QueryCost
 from app.models.tenant import TenantDocument
 from app.utils import semantic_cache
-from app.utils.observability import get_logger
+from app.utils.observability import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -29,6 +29,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
+    configure_logging(settings.log_level)
     logger.info("startup", extra={"operation": "app_startup"})
 
     # MongoDB — connectivity and tenant index are fatal; app cannot run without them.
@@ -107,7 +108,9 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("aws_session_created", extra={"operation": "app_startup"})
 
     try:
-        deleted_count = await semantic_cache.cleanup_expired_entries(settings.semantic_cache_ttl_hours)
+        deleted_count = await semantic_cache.cleanup_expired_entries(
+            settings.semantic_cache_ttl_hours
+        )
         logger.info(
             "semantic_cache_cleanup",
             extra={"operation": "app_startup", "extra_data": {"deleted_count": deleted_count}},
@@ -149,6 +152,7 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(RateLimiterMiddleware)  # innermost — runs after auth sets tenant
     application.add_middleware(AuthMiddleware)          # middle — runs after request ID set
+    application.add_middleware(RequestResponseLoggingMiddleware)
     application.add_middleware(RequestIDMiddleware)     # outermost — runs first
     application.add_exception_handler(TrueRAGError, truerag_exception_handler)  # type: ignore[arg-type]
     application.add_exception_handler(Exception, generic_exception_handler)
