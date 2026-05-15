@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from beanie import Document
 from pydantic import Field
+from pymongo import ASCENDING, IndexModel
 
 from app.models.document import DocumentStatus
 
@@ -28,4 +29,7 @@ class IngestionJob(Document):
 
     class Settings:
         name = "ingestion_jobs"
-        indexes = ["job_id", "document_id"]
+        indexes = [
+            IndexModel([("job_id", ASCENDING)]),
+            IndexModel([("document_id", ASCENDING)]),
+        ]

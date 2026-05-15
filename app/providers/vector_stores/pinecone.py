@@ -101,6 +101,49 @@ class PineconeVectorStore(VectorStore):
             )
         return results
 
+    async def fetch_all(self, namespace: str, top_k: int) -> list[VectorResult]:
+        try:
+            index = await self._get_index()
+
+            def _list_ids() -> list[str]:
+                ids: list[str] = []
+                for page in index.list(namespace=namespace, limit=100):
+                    ids.extend(page)
+                    if len(ids) >= top_k:
+                        break
+                return ids[:top_k]
+
+            ids = await asyncio.to_thread(_list_ids)
+            if not ids:
+                return []
+
+            results: list[VectorResult] = []
+            for i in range(0, len(ids), 100):
+                batch = ids[i : i + 100]
+                response = await asyncio.to_thread(index.fetch, ids=batch, namespace=namespace)
+                for vid, vector_data in response.vectors.items():
+                    metadata = cast(dict[str, object], vector_data.metadata or {})
+                    actual_namespace = str(metadata.get("namespace", ""))
+                    if actual_namespace != namespace:
+                        raise NamespaceViolationError(
+                            f"Namespace mismatch: expected={namespace} actual={actual_namespace}"
+                        )
+                    text = str(metadata.pop("text", ""))
+                    metadata.pop("namespace", None)
+                    results.append(
+                        VectorResult(
+                            id=vid,
+                            score=0.0,
+                            metadata=ChunkMetadata.model_validate(metadata),
+                            text=text,
+                        )
+                    )
+            return results
+        except NamespaceViolationError:
+            raise
+        except Exception as exc:
+            raise ProviderUnavailableError(f"pinecone fetch_all failed: {exc}") from exc
+
     async def delete_namespace(self, namespace: str) -> None:
         try:
             index = await self._get_index()

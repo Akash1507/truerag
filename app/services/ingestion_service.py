@@ -36,6 +36,7 @@ from app.models.ingestion_job import IngestionJob
 from app.providers.queue import get_queue_backend
 from app.services.agent_service import AgentService, agent_service
 from app.utils import semantic_cache
+from app.utils.file_store import delete_file, put_file
 from app.utils.observability import get_logger
 from app.utils.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
@@ -190,16 +191,7 @@ class IngestionService:
             version = predecessor.version + 1
             lineage_id = predecessor.lineage_id or predecessor.document_id
 
-        async with aws_session.client(
-            "s3",
-            region_name=settings.aws_region,
-            endpoint_url=settings.aws_endpoint_url,
-        ) as s3:
-            await s3.put_object(
-                Bucket=settings.s3_document_bucket,
-                Key=s3_key,
-                Body=content,
-            )
+        await put_file(content, s3_key, settings, aws_session)
 
         document_record = DocumentRecord(
             document_id=document_id,
@@ -221,12 +213,7 @@ class IngestionService:
         try:
             await self._document_dao.insert_one(document_record)
         except Exception as exc:
-            async with aws_session.client(
-                "s3",
-                region_name=settings.aws_region,
-                endpoint_url=settings.aws_endpoint_url,
-            ) as s3:
-                await s3.delete_object(Bucket=settings.s3_document_bucket, Key=s3_key)
+            await delete_file(s3_key, settings, aws_session)
             raise IngestionError(f"Failed to record document: {exc}") from exc
 
         try:
@@ -239,12 +226,7 @@ class IngestionService:
                 )
             )
         except Exception as exc:
-            async with aws_session.client(
-                "s3",
-                region_name=settings.aws_region,
-                endpoint_url=settings.aws_endpoint_url,
-            ) as s3:
-                await s3.delete_object(Bucket=settings.s3_document_bucket, Key=s3_key)
+            await delete_file(s3_key, settings, aws_session)
             try:
                 await self._document_dao.delete_one({"document_id": document_id})
             except Exception as cleanup_exc:

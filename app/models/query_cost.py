@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from beanie import Document
 from pydantic import Field
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
 class QueryCost(Document):
@@ -16,4 +17,6 @@ class QueryCost(Document):
 
     class Settings:
         name = "query_costs"
-        indexes = [("tenant_id", 1), ("agent_id", 1), ("timestamp", -1)]
+        indexes = [
+            IndexModel([("tenant_id", ASCENDING), ("agent_id", ASCENDING), ("timestamp", DESCENDING)])
+        ]

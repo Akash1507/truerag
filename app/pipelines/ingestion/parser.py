@@ -31,18 +31,31 @@ def _parse_text(content: bytes) -> str:
 
 
 def _parse_pdf(content: bytes) -> str:
+    text = _parse_pdf_pymupdf(content) or _parse_pdf_pypdf(content)
+    if not text or not text.strip():
+        raise ParseError("PDF produced no text — may be a scanned/image-only PDF")
+    return text
+
+
+def _parse_pdf_pymupdf(content: bytes) -> str | None:
+    try:
+        import fitz  # pymupdf
+        doc = fitz.open(stream=content, filetype="pdf")
+        pages = [page.get_text() for page in doc]
+        doc.close()
+        return "\n".join(pages)
+    except Exception:
+        return None
+
+
+def _parse_pdf_pypdf(content: bytes) -> str | None:
     try:
         reader = pypdf.PdfReader(io.BytesIO(content))
         if not reader.pages:
-            raise ParseError("PDF has no pages")
-        text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        if not text.strip():
-            raise ParseError("PDF produced no text")
-        return text
-    except Exception as exc:
-        if isinstance(exc, ParseError):
-            raise
-        raise ParseError(f"PDF parse failed: {exc}") from exc
+            return None
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return None
 
 
 def _parse_docx(content: bytes) -> str:

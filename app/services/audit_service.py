@@ -62,6 +62,8 @@ class AuditService:
         session: aioboto3.Session | None = None,
     ) -> None:
         settings = self._settings_getter()
+        if settings.app_env == "local":
+            return
         _session = session or self._default_session
         timestamp = datetime.now(UTC).isoformat()
         tracker = LatencyTracker()

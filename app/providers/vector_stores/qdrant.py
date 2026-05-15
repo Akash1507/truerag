@@ -112,6 +112,32 @@ class QdrantVectorStore(VectorStore):
             )
         return results
 
+    async def fetch_all(self, namespace: str, top_k: int) -> list[VectorResult]:
+        try:
+            client = await self._get_client()
+            results: list[VectorResult] = []
+            offset = None
+            while len(results) < top_k:
+                batch_limit = min(top_k - len(results), 100)
+                points, next_offset = await client.scroll(
+                    collection_name=namespace,
+                    limit=batch_limit,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = cast(dict[str, object], point.payload or {})
+                    metadata = ChunkMetadata.model_validate(payload.get("metadata", {}))
+                    text = str(payload.get("text", ""))
+                    results.append(VectorResult(id=str(point.id), score=0.0, metadata=metadata, text=text))
+                if next_offset is None:
+                    break
+                offset = next_offset
+            return results
+        except Exception as exc:
+            raise ProviderUnavailableError(f"qdrant fetch_all failed: {exc}") from exc
+
     async def delete_namespace(self, namespace: str) -> None:
         try:
             client = await self._get_client()

@@ -1,6 +1,0 @@
-services:
-  postgres:
-    environment:
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
-    volumes:
-      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:ro

@@ -5,6 +5,7 @@ import aioboto3  # type: ignore[import-untyped]
 import asyncpg  # type: ignore[import-untyped]
 from beanie import init_beanie
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.api.v1 import router as v1_router
@@ -154,6 +155,13 @@ def create_app() -> FastAPI:
     application.add_middleware(AuthMiddleware)          # middle — runs after request ID set
     application.add_middleware(RequestResponseLoggingMiddleware)
     application.add_middleware(RequestIDMiddleware)     # outermost — runs first
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.add_exception_handler(TrueRAGError, truerag_exception_handler)  # type: ignore[arg-type]
     application.add_exception_handler(Exception, generic_exception_handler)
     application.include_router(v1_router)

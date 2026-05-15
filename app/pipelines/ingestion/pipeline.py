@@ -10,6 +10,7 @@ from app.models.chunk import Chunk, ChunkMetadata, VectorRecord
 from app.models.ingestion_job import IngestionJobPayload
 from app.pipelines.ingestion.parser import parse_document
 from app.providers.registry import CHUNKING_REGISTRY, EMBEDDING_REGISTRY
+from app.utils.file_store import get_file
 from app.utils.observability import (
     LatencyTracker,
     get_logger,
@@ -35,7 +36,7 @@ async def run_ingestion_pipeline(
         agent_id=payload.agent_id,
     )
     try:
-        content = await _download_from_s3(payload, aws_session, settings)
+        content = await get_file(payload.s3_key, settings, aws_session)
 
         tracker = LatencyTracker()
         raw_text = parse_document(content, payload.file_type)
@@ -56,20 +57,6 @@ async def run_ingestion_pipeline(
         log_stage_latency(logger, "upsert", tracker.elapsed_ms())
     finally:
         reset_request_context(tokens)
-
-
-async def _download_from_s3(
-    payload: IngestionJobPayload,
-    aws_session: aioboto3.Session,
-    settings: Settings,
-) -> bytes:
-    async with aws_session.client(
-        "s3",
-        region_name=settings.aws_region,
-        endpoint_url=settings.aws_endpoint_url,
-    ) as s3:
-        response = await s3.get_object(Bucket=settings.s3_document_bucket, Key=payload.s3_key)
-        return await response["Body"].read()
 
 
 def _scrub_with_logging(raw_text: str, payload: IngestionJobPayload) -> str:

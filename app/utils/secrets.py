@@ -6,12 +6,34 @@ from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
 
-# Module-level fallback session; callers should prefer passing request.app.state.aws_session
 _default_session: aioboto3.Session = aioboto3.Session()
+
+# Maps Secrets Manager secret names → Settings field names for local dev bypass
+_LOCAL_SECRET_MAP: dict[str, str] = {
+    "truerag/openai/api_key": "openai_api_key",
+    "truerag/anthropic/api_key": "anthropic_api_key",
+    "truerag/cohere/api_key": "cohere_api_key",
+    "cohere/api_key": "cohere_api_key",
+    "truerag/qdrant/api_key": "qdrant_api_key",
+    "truerag/pinecone/api_key": "pinecone_api_key",
+    "truerag/mongodb/uri": "mongodb_uri",
+    "truerag/pgvector/dsn": "pgvector_dsn",
+}
 
 
 async def get_secret(name: str, session: aioboto3.Session | None = None) -> str:
     settings = get_settings()
+
+    if settings.app_env == "local":
+        field = _LOCAL_SECRET_MAP.get(name)
+        if field:
+            value = str(getattr(settings, field, "") or "")
+            if value:
+                return value
+            raise ProviderUnavailableError(
+                f"Secret {name!r} not set. Add {field.upper()} to your .env file."
+            )
+
     _session = session or _default_session
     logger.info(
         "get_secret",

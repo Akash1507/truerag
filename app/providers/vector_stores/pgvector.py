@@ -15,6 +15,12 @@ from app.utils.observability import get_logger
 logger = get_logger(__name__)
 
 
+def _parse_jsonb(raw: object) -> dict:
+    if isinstance(raw, str):
+        return json.loads(raw)
+    return raw  # type: ignore[return-value]
+
+
 class PgVectorStore(VectorStore):
     _pool: asyncpg.Pool | None = None
     _pool_lock: asyncio.Lock | None = None
@@ -88,10 +94,10 @@ class PgVectorStore(VectorStore):
         results: list[VectorResult] = []
         for row in rows:
             row_namespace = row["namespace"]
+            metadata_dict = _parse_jsonb(row["metadata"])
             if row_namespace != namespace:
-                metadata_raw = row["metadata"] or {}
-                tenant_id = str(metadata_raw.get("tenant_id", "unknown"))
-                agent_id = str(metadata_raw.get("agent_id", "unknown"))
+                tenant_id = str(metadata_dict.get("tenant_id", "unknown"))
+                agent_id = str(metadata_dict.get("agent_id", "unknown"))
                 logger.error(
                     "namespace_violation",
                     extra={
@@ -112,11 +118,35 @@ class PgVectorStore(VectorStore):
                 VectorResult(
                     id=row["id"],
                     score=1.0 - float(row["distance"]),
-                    metadata=ChunkMetadata.model_validate(row["metadata"]),
+                    metadata=ChunkMetadata.model_validate(metadata_dict),
                     text=row["text"],
                 )
             )
         return results
+
+    async def fetch_all(self, namespace: str, top_k: int) -> list[VectorResult]:
+        pool = await self._get_pool()
+        sql = f"""
+            SELECT id, namespace, metadata, text
+            FROM {self._table_name}
+            WHERE namespace = $1
+            LIMIT $2
+        """
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(sql, namespace, top_k)
+        except Exception as exc:
+            raise ProviderUnavailableError(f"pgvector fetch_all failed: {exc}") from exc
+
+        return [
+            VectorResult(
+                id=row["id"],
+                score=0.0,
+                metadata=ChunkMetadata.model_validate(_parse_jsonb(row["metadata"])),
+                text=row["text"],
+            )
+            for row in rows
+        ]
 
     async def delete_namespace(self, namespace: str) -> None:
         pool = await self._get_pool()
@@ -157,6 +187,14 @@ class PgVectorStore(VectorStore):
             if cls._pool is not None:
                 return cls._pool
             try:
+                # register_vector (pool init callback) fails if the vector type is absent.
+                # Pre-create the extension on a throwaway connection before pool creation.
+                bootstrap = await asyncpg.connect(dsn=self._settings.pgvector_dsn)
+                try:
+                    await bootstrap.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                finally:
+                    await bootstrap.close()
+
                 pool = await asyncpg.create_pool(
                     dsn=self._settings.pgvector_dsn,
                     init=register_vector,

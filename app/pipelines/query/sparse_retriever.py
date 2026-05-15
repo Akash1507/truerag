@@ -35,11 +35,9 @@ async def retrieve_sparse(
     namespace = f"{agent.tenant_id}_{agent.agent_id}"
 
     try:
-        all_chunks = await vector_store.query(
+        all_chunks = await vector_store.fetch_all(
             namespace=namespace,
-            vector=[0.0],
             top_k=_MAX_CORPUS_TOP_K,
-            filters=None,
         )
     except Exception as exc:  # pragma: no cover
         raise ProviderUnavailableError(f"Sparse retrieval failed to fetch corpus: {exc}") from exc

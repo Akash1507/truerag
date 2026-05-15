@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     openai_api_key_secret_name: str = "truerag/openai/api_key"
     anthropic_api_key_secret_name: str = "truerag/anthropic/api_key"
 
+    # Direct API keys — used when APP_ENV=local (bypasses Secrets Manager)
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    cohere_api_key: str = ""
+    qdrant_api_key: str = ""
+    pinecone_api_key: str = ""
+
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "truerag"
     pgvector_dsn: str = "postgresql://postgres:postgres@localhost:5432/truerag"
@@ -36,10 +43,11 @@ class Settings(BaseSettings):
     bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     aws_endpoint_url: str | None = None
     sqs_ingestion_queue_url: str = "http://localhost:4566/000000000000/truerag-ingestion"
-    queue_backend: Literal["sqs", "kafka", "local"] = "sqs"
+    queue_backend: Literal["sqs", "kafka", "local"] = "kafka"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_topic: str = "truerag-ingestion"
     s3_document_bucket: str = "truerag-documents"
+    local_storage_path: str = "./local_storage"
     dynamodb_audit_table: str = "truerag-audit-log"
     semantic_cache_ttl_hours: int = 24
 

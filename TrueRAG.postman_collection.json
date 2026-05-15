@@ -1,0 +1,410 @@
+{
+  "info": {
+    "_postman_id": "truerag-collection-v1",
+    "name": "TrueRAG",
+    "description": "TrueRAG API collection. Run requests top-to-bottom on first use: Register Tenant sets api_key + tenant_id, Create Agent sets agent_id, Upload Document sets document_id. All subsequent requests use those variables automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "api_key",  "value": "", "type": "string" },
+    { "key": "tenant_id", "value": "", "type": "string" },
+    { "key": "agent_id",  "value": "", "type": "string" },
+    { "key": "document_id", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key",   "value": "X-API-Key",   "type": "string" },
+      { "key": "value", "value": "{{api_key}}", "type": "string" },
+      { "key": "in",    "value": "header",       "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Observability",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "health"]
+            }
+          }
+        },
+        {
+          "name": "Readiness Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/ready",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "ready"]
+            }
+          }
+        },
+        {
+          "name": "Prometheus Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "metrics"]
+            }
+          }
+        },
+        {
+          "name": "Cost Breakdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/metrics/costs?window_hours=24",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "metrics", "costs"],
+              "query": [
+                { "key": "window_hours", "value": "24", "description": "Rolling window in hours (default 24)" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tenants",
+      "item": [
+        {
+          "name": "Register Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.collectionVariables.set('api_key',   r.api_key);",
+                  "pm.collectionVariables.set('tenant_id', r.tenant_id);",
+                  "console.log('api_key captured:', r.api_key);",
+                  "console.log('tenant_id captured:', r.tenant_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"my-tenant\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenants",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenants"]
+            },
+            "description": "Register a new tenant. Captures api_key and tenant_id into collection variables automatically."
+          }
+        },
+        {
+          "name": "List Tenants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/tenants?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenants"],
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true, "description": "Pagination cursor from previous response" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Tenant",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/tenants/{{tenant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Tenants may only delete themselves. Uses captured tenant_id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Create Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.collectionVariables.set('agent_id', r.agent_id);",
+                  "console.log('agent_id captured:', r.agent_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"my-agent\",\n  \"chunking_strategy\": \"fixed_size\",\n  \"chunk_size\": 512,\n  \"chunk_overlap\": 50,\n  \"vector_store\": \"pgvector\",\n  \"embedding_provider\": \"openai\",\n  \"llm_provider\": \"openai\",\n  \"retrieval_mode\": \"hybrid\",\n  \"reranker\": \"none\",\n  \"query_rewrite\": false,\n  \"rerank_pool_size\": 20,\n  \"top_k\": 5,\n  \"semantic_cache_enabled\": false,\n  \"semantic_cache_threshold\": null,\n  \"faithfulness_threshold\": 0.6\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents"]
+            },
+            "description": "Create an agent. Captures agent_id into collection variable.\n\nValid values:\n- chunking_strategy: fixed_size | semantic | hierarchical | document_aware | keyword\n- vector_store: pgvector | qdrant | pinecone\n- embedding_provider: openai | cohere | bedrock\n- llm_provider: anthropic | openai | bedrock\n- retrieval_mode: dense | sparse | hybrid\n- reranker: none | cross_encoder | cohere"
+          }
+        },
+        {
+          "name": "List Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents"],
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Agent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Agent",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"top_k\": 10,\n  \"reranker\": \"cross_encoder\",\n  \"query_rewrite\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}"]
+            },
+            "description": "Partial update — send only fields to change."
+          }
+        },
+        {
+          "name": "Delete Agent",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Upload Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.collectionVariables.set('document_id', r.document_id);",
+                  "console.log('document_id captured:', r.document_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Select a PDF, DOCX, or TXT file to upload"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/documents",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "documents"]
+            },
+            "description": "Upload a document for ingestion. Captures document_id into collection variable."
+          }
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/documents?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "documents"],
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Document Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/documents/{{document_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "documents", "{{document_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/documents/{{document_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "documents", "{{document_id}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "item": [
+        {
+          "name": "Query Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"What is the main topic of the uploaded documents?\",\n  \"top_k\": null,\n  \"filters\": null,\n  \"output_format\": \"text\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/query",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "query"]
+            },
+            "description": "Query the agent. top_k overrides agent config if set. output_format: text | json."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Eval",
+      "item": [
+        {
+          "name": "Create Eval Dataset",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questions\": [\n    {\n      \"question\": \"What is the capital of France?\",\n      \"expected_answer\": \"Paris\"\n    },\n    {\n      \"question\": \"Who wrote Romeo and Juliet?\",\n      \"expected_answer\": \"William Shakespeare\"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/eval",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "eval"]
+            }
+          }
+        },
+        {
+          "name": "Run Eval",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/eval/run",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "eval", "run"]
+            },
+            "description": "Run RAGAS evaluation. Returns 200 with scores if synchronous, 202 Accepted if running in background."
+          }
+        },
+        {
+          "name": "Eval History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_id}}/eval/history?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_id}}", "eval", "history"],
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

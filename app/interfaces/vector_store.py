@@ -13,6 +13,9 @@ class VectorStore(ABC):
     ) -> list[VectorResult]: ...
 
     @abstractmethod
+    async def fetch_all(self, namespace: str, top_k: int) -> list[VectorResult]: ...
+
+    @abstractmethod
     async def delete_namespace(self, namespace: str) -> None: ...
 
     @abstractmethod
