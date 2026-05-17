@@ -50,7 +50,12 @@ class PineconeVectorStore(VectorStore):
             raise ProviderUnavailableError(f"pinecone upsert failed: {exc}") from exc
 
     async def query(
-        self, namespace: str, vector: list[float], top_k: int, filters: dict[str, str] | None
+        self,
+        namespace: str,
+        vector: list[float],
+        top_k: int,
+        filters: dict[str, str] | None,
+        include_embeddings: bool = False,
     ) -> list[VectorResult]:
         pinecone_filter: dict[str, dict[str, str]] = {
             "namespace": {"$eq": namespace},
@@ -66,6 +71,7 @@ class PineconeVectorStore(VectorStore):
                 namespace=namespace,
                 filter=pinecone_filter,
                 include_metadata=True,
+                include_values=include_embeddings,
             )
         except Exception as exc:
             raise ProviderUnavailableError(f"pinecone query failed: {exc}") from exc
@@ -91,12 +97,18 @@ class PineconeVectorStore(VectorStore):
                 )
             text = str(metadata.pop("text", ""))
             metadata.pop("namespace", None)
+            embedding: list[float] | None = None
+            if include_embeddings:
+                raw_values = getattr(match, "values", None)
+                if isinstance(raw_values, list):
+                    embedding = [float(value) for value in raw_values]
             results.append(
                 VectorResult(
                     id=str(match.id),
                     score=float(match.score),
                     metadata=ChunkMetadata.model_validate(metadata),
                     text=text,
+                    embedding=embedding,
                 )
             )
         return results
@@ -143,6 +155,33 @@ class PineconeVectorStore(VectorStore):
             raise
         except Exception as exc:
             raise ProviderUnavailableError(f"pinecone fetch_all failed: {exc}") from exc
+
+    async def list_hashes(self, namespace: str) -> set[str]:
+        try:
+            index = await self._get_index()
+
+            def _list_ids() -> list[str]:
+                ids: list[str] = []
+                for page in index.list(namespace=namespace, limit=100):
+                    ids.extend(page)
+                return ids
+
+            ids = await asyncio.to_thread(_list_ids)
+            if not ids:
+                return set()
+
+            hashes: set[str] = set()
+            for i in range(0, len(ids), 100):
+                batch = ids[i : i + 100]
+                response = await asyncio.to_thread(index.fetch, ids=batch, namespace=namespace)
+                for vector_data in response.vectors.values():
+                    metadata = cast(dict[str, object], vector_data.metadata or {})
+                    content_hash = metadata.get("content_hash")
+                    if content_hash:
+                        hashes.add(str(content_hash))
+            return hashes
+        except Exception as exc:
+            raise ProviderUnavailableError(f"pinecone list_hashes failed: {exc}") from exc
 
     async def delete_namespace(self, namespace: str) -> None:
         try:

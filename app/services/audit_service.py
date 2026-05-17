@@ -1,43 +1,17 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from functools import wraps
-from typing import ParamSpec, TypeVar
 
 import aioboto3
 
 from app.core.config import Settings, get_settings
-from app.core.errors import InvalidCursorError, TrueRAGError
+from app.core.decorators import service_method
+from app.core.errors import TrueRAGError
 from app.utils.observability import LatencyTracker, _request_id_var, get_logger, log_stage_latency
 
 logger = get_logger(__name__)
 
 _default_session: aioboto3.Session = aioboto3.Session()
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-try:
-    from app.core.decorators import service_method  # type: ignore[import-not-found]
-except Exception:
-    def service_method(
-        operation: str,
-    ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-        def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-            @wraps(func)
-            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                try:
-                    return await func(*args, **kwargs)
-                except TrueRAGError:
-                    raise
-                except ValueError as exc:
-                    raise InvalidCursorError(str(exc)) from exc
-                except Exception:
-                    raise
-
-            return wrapper
-
-        return decorator
 
 
 class AuditService:

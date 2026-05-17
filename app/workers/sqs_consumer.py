@@ -179,6 +179,7 @@ if __name__ == "__main__":
         from motor.motor_asyncio import AsyncIOMotorClient
 
         from app.models.agent import AgentDocument
+        from app.models.conversation import ConversationSession
         from app.models.document import DocumentRecord
         from app.models.ingestion_job import IngestionJob
         from app.models.tenant import TenantDocument
@@ -189,7 +190,13 @@ if __name__ == "__main__":
             db = motor_client[settings.mongodb_database]
             await init_beanie(
                 database=db,
-                document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob],
+                document_models=[
+                    TenantDocument,
+                    AgentDocument,
+                    DocumentRecord,
+                    IngestionJob,
+                    ConversationSession,
+                ],
             )
             session = aioboto3.Session()
             backend = get_queue_backend(settings=settings, aws_session=session)

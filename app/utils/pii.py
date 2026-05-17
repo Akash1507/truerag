@@ -24,6 +24,8 @@ def _get_engines() -> tuple[AnalyzerEngine, Any]:
 
 def scrub_pii(text: str, *, document_id: str | None = None) -> str:
     analyzer, anonymizer = _get_engines()
+    # Strip lone surrogates — PDF parsers can produce them from malformed fonts
+    text = text.encode("utf-8", errors="ignore").decode("utf-8")
     try:
         results = analyzer.analyze(text=text, language="en")
         if not results:

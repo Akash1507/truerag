@@ -1,10 +1,11 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
-from app.core.auth import get_current_tenant
+from app.core.auth import get_current_tenant, require_role
 from app.models.eval import (
     EvalDatasetCreateRequest,
     EvalDatasetCreateResponse,
+    EvalDatasetGetResponse,
     EvalHistoryResponse,
     EvalRunResponse,
     EvalRunAcceptedResponse,
@@ -15,11 +16,19 @@ from app.services.eval_service import eval_service
 router = APIRouter()
 
 
+@router.get("/{agent_id}/eval", response_model=EvalDatasetGetResponse)
+async def get_eval_dataset(
+    agent_id: str,
+    caller: TenantDocument = Depends(get_current_tenant),  
+) -> EvalDatasetGetResponse:
+    return await eval_service.get_dataset(agent_id=agent_id, tenant_id=caller.tenant_id)
+
+
 @router.post("/{agent_id}/eval", status_code=201, response_model=EvalDatasetCreateResponse)
 async def create_eval_dataset(
     agent_id: str,
     body: EvalDatasetCreateRequest,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
 ) -> EvalDatasetCreateResponse:
     return await eval_service.create_eval_dataset(
         agent_id=agent_id,
@@ -37,7 +46,7 @@ async def run_eval(
     agent_id: str,
     background_tasks: BackgroundTasks,
     request: Request,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
 ) -> EvalRunResponse | JSONResponse:
     # CI-CD: read faithfulness from response, fail pipeline if < threshold.
     request.state.background_tasks = background_tasks
@@ -56,7 +65,7 @@ async def get_eval_history(
     agent_id: str,
     cursor: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(get_current_tenant),  
 ) -> EvalHistoryResponse:
     return await eval_service.get_eval_history(
         agent_id=agent_id,

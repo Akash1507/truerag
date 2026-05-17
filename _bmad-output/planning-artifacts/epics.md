@@ -1575,3 +1575,39 @@ So that code quality and retrieval quality are both enforced automatically befor
 **Given** the eval run exceeds 20 questions (async path from Story 6.2)
 **When** the pipeline waits for results
 **Then** `deploy.yml` polls `GET /v1/agents/{eval_agent_id}/eval/history` for the `run_id` with a configurable timeout (default: 10 minutes); if the timeout is exceeded the deployment is halted
+
+---
+
+## Epic 11: Production-Readiness & Advanced Features
+
+**Goal:** Close the critical production-readiness gaps identified in the platform review — covering UX (streaming, conversation memory), security (RBAC, token budgets), data quality (OCR, tables, deduplication), resilience (circuit breakers, DLQ), and retrieval quality (HyDE, multi-query, MMR).
+
+**Stories:**
+
+### Story 11.1: SSE Token Streaming for Query Endpoint
+
+Adds `stream: bool = False` to `QueryRequest`. Implements `stream_generate()` on all LLM provider abstractions (OpenAI via `stream=True`, Anthropic via `client.messages.stream()`). Returns `StreamingResponse` with `Content-Type: text/event-stream`. Each token emitted as `data: {"type": "token", "token": "..."}`. Final event includes `confidence`, `citations`, `latency_ms`. Semantic cache hits streamed as chunked segments at ~50ms intervals. Non-streaming path untouched.
+
+### Story 11.2: Conversation Memory & Multi-Turn Chat
+
+Introduces `ConversationSession` Beanie document with 48h TTL index. Adds `session_id: str | None` to `QueryRequest`/`QueryResponse`. On session continuation, full message history prepended to LLM prompt. `context_window_tokens: int = 8192` on `AgentDocument` controls history trimming (oldest turns dropped first). Session isolation enforced: wrong tenant/agent returns 403. Sessions older than 24h return 410 Gone.
+
+### Story 11.3: Per-Query Hallucination Guardrail
+
+Adds `hallucination_check_enabled: bool = False` to `AgentDocument`. After generation, calls the same LLM with a factual grounding judge prompt. JSON response `{"supported": bool, "confidence": float}` maps to `"low"/"medium"/"high"` risk. `hallucination_risk` field added to `QueryResponse` (null when disabled or on direct-generation path). Judge failure degrades gracefully to null — never breaks the query path.
+
+### Story 11.4: RBAC & Per-Tenant Token Budget Enforcement
+
+Adds `role: Literal["admin", "agent_owner", "reader"]` to `TenantDocument`. `require_role(*roles)` FastAPI dependency in `app/core/auth.py` wraps `get_current_tenant`. Readers blocked from all mutating endpoints (HTTP 403). `monthly_token_budget: int | None` on `TenantDocument`. Budget checked at `QueryService.handle_query()` start via `QueryCostDAO.get_monthly_token_total()`. Exceeded budget raises `TokenBudgetExceededError` → HTTP 429. `PATCH /v1/tenants/{id}/budget` admin endpoint.
+
+### Story 11.5: Document Quality — OCR, Tables & Chunk Deduplication
+
+OCR fallback via `pdf2image` + `pytesseract` when pymupdf/pypdf return < 50 characters. PDF table extraction via `pdfplumber` (non-fatal on failure). DOCX table extraction via `doc.tables`. Chunk-level content hash deduplication: `sha256(text)[:16]` checked against `vector_store.list_hashes(namespace)` before embedding. `list_hashes()` added as abstract method to `VectorStore` interface. Max document size guard (default 50 MB) raises `PermanentIngestionError`.
+
+### Story 11.6: Circuit Breakers, DLQ Handler & Ingestion Hardening
+
+`CircuitBreaker` class in `app/utils/circuit_breaker.py` with configurable failure threshold and recovery timeout. Applied to all four provider categories: LLM, embedding, vector store, reranker. `CircuitOpenError` → HTTP 503. DLQ handler worker scans failed jobs and re-enqueues retriable ones (max 3 retries). `PermanentIngestionError` jobs skipped by DLQ. `error_type` stored on `IngestionJob`. Atomic `set_processing()` prevents duplicate job execution. Unknown chunking strategy raises `PermanentIngestionError`.
+
+### Story 11.7: Advanced Retrieval — HyDE, Multi-Query Expansion & MMR
+
+**HyDE**: LLM generates a hypothetical answer document; its embedding is used for vector search instead of the query embedding. **Multi-query**: LLM generates N query variants; each is retrieved independently; results merged via Reciprocal Rank Fusion (RRF, k=60). **MMR**: after retrieval/reranking, chunks re-ranked to maximise relevance while minimising redundancy (`lambda * score - (1-lambda) * max_similarity_to_selected`). All three are per-agent opt-in flags. HyDE and multi-query are mutually exclusive (HyDE wins). All enhancements degrade gracefully on failure.

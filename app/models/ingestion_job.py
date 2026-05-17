@@ -24,6 +24,8 @@ class IngestionJob(Document):
     document_id: str
     tenant_id: str
     status: DocumentStatus = DocumentStatus.queued
+    retry_count: int = 0
+    error_type: str | None = None
     error_reason: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -32,4 +34,5 @@ class IngestionJob(Document):
         indexes = [
             IndexModel([("job_id", ASCENDING)]),
             IndexModel([("document_id", ASCENDING)]),
+            IndexModel([("status", ASCENDING), ("retry_count", ASCENDING)]),
         ]

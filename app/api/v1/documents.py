@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Request, UploadFile, status
 
-from app.core.auth import get_current_tenant
+from app.core.auth import get_current_tenant, require_role
 from app.core.config import get_settings
 from app.models.document import (
     DocumentListResponse,
@@ -24,7 +24,7 @@ async def upload_document_route(
     agent_id: str,
     file: UploadFile,
     request: Request,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
 ) -> DocumentUploadResponse:
     return await ingestion_service.upload_document(
         file=file,
@@ -42,7 +42,7 @@ async def upload_document_route(
 async def get_document_status_route(
     agent_id: str,
     document_id: str,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(get_current_tenant),  
 ) -> DocumentStatusResponse:
     return await ingestion_service.get_document_status(
         document_id=document_id,
@@ -59,7 +59,7 @@ async def list_documents_route(
     agent_id: str,
     cursor: str | None = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=100),
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(get_current_tenant),  
 ) -> DocumentListResponse:
     return await ingestion_service.list_documents(
         agent_id=agent_id,
@@ -77,7 +77,7 @@ async def list_documents_route(
 async def reindex_agent_route(
     agent_id: str,
     request: Request,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
 ) -> ReindexResponse:
     return await ingestion_service.reindex_agent(
         agent_id=agent_id,
@@ -94,7 +94,7 @@ async def reindex_agent_route(
 async def delete_document_route(
     agent_id: str,
     document_id: str,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
 ) -> None:
     await ingestion_service.delete_document(
         document_id=document_id,

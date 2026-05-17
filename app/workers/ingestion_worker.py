@@ -22,12 +22,17 @@ async def process_job(
     aws_session: aioboto3.Session,
     settings: Settings,
 ) -> None:
+    updated = await ingestion_job_dao.set_processing(payload.job_id)
+    if not updated:
+        logger.warning(
+            "job_already_processing",
+            extra={"operation": "process_job", "extra_data": {"job_id": payload.job_id}},
+        )
+        return
+
     await document_dao.update(
         {"document_id": payload.document_id},
         {"status": DocumentStatus.processing},
-    )
-    await ingestion_job_dao.update(
-        {"job_id": payload.job_id}, {"status": DocumentStatus.processing}
     )
 
     try:
@@ -51,7 +56,11 @@ async def process_job(
         error_reason = str(exc)
         await ingestion_job_dao.update(
             {"job_id": payload.job_id},
-            {"status": DocumentStatus.failed, "error_reason": error_reason},
+            {
+                "status": DocumentStatus.failed,
+                "error_reason": error_reason,
+                "error_type": type(exc).__name__,
+            },
         )
         await document_dao.update(
             {"document_id": payload.document_id},
@@ -62,7 +71,11 @@ async def process_job(
         error_reason = str(exc)
         await ingestion_job_dao.update(
             {"job_id": payload.job_id},
-            {"status": DocumentStatus.failed, "error_reason": error_reason},
+            {
+                "status": DocumentStatus.failed,
+                "error_reason": error_reason,
+                "error_type": type(exc).__name__,
+            },
         )
         await document_dao.update(
             {"document_id": payload.document_id},

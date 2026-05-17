@@ -23,10 +23,16 @@ from app.db.dao.document_dao import DocumentDAO, document_dao
 from app.db.dao.ingestion_job_dao import IngestionJobDAO, ingestion_job_dao
 from app.db.dao.tenant_dao import TenantDAO, tenant_dao
 from app.models.tenant import (
+    AdminTenantItem,
+    AdminTenantListResponse,
+    MeResponse,
+    TenantBudgetResponse,
     TenantCreateResponse,
     TenantDocument,
     TenantListItem,
     TenantListResponse,
+    TenantUpdateRequest,
+    TenantUpdateResponse,
 )
 from app.utils.observability import get_logger
 from app.utils.pagination import decode_cursor, encode_cursor
@@ -80,7 +86,7 @@ class TenantService:
         self._settings_getter = settings_getter
         self._vector_store_getter = vector_store_getter
 
-    async def _create_tenant_legacy(self, name: str) -> tuple[TenantDocument, str]:
+    async def _create_tenant_legacy(self, name: str, display_name: str | None = None) -> tuple[TenantDocument, str]:
         existing = await self._tenant_dao.find_one({"name": name})
         if existing:
             raise TenantAlreadyExistsError(f"Tenant with name '{name}' already exists")
@@ -91,6 +97,7 @@ class TenantService:
         tenant = TenantDocument(
             tenant_id=str(ObjectId()),
             name=name,
+            display_name=display_name,
             api_key_hash=api_key_hash,
             rate_limit_rpm=settings.default_rate_limit_rpm,
             created_at=datetime.now(UTC),
@@ -130,6 +137,7 @@ class TenantService:
             TenantListItem(
                 tenant_id=doc.tenant_id,
                 name=doc.name,
+                display_name=doc.display_name,
                 rate_limit_rpm=(
                     rpm
                     if (rpm := doc.rate_limit_rpm) is not None
@@ -142,12 +150,13 @@ class TenantService:
         return items, next_cursor
 
     @service_method("create_tenant")
-    async def register(self, name: str) -> TenantCreateResponse:
-        tenant, raw_key = await self._create_tenant_legacy(name)
+    async def register(self, name: str, display_name: str | None = None) -> TenantCreateResponse:
+        tenant, raw_key = await self._create_tenant_legacy(name, display_name)
         settings = self._settings_getter()
         return TenantCreateResponse(
             tenant_id=tenant.tenant_id,
             name=tenant.name,
+            display_name=tenant.display_name,
             api_key=raw_key,
             rate_limit_rpm=(
                 tenant.rate_limit_rpm
@@ -203,9 +212,130 @@ class TenantService:
             },
         )
 
+    @service_method("update_tenant")
+    async def update_tenant(self, tenant_id: str, update: TenantUpdateRequest) -> TenantUpdateResponse:
+        tenant_doc = await self._tenant_dao.find_one({"tenant_id": tenant_id})
+        if not tenant_doc:
+            raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
+
+        update_dict = update.model_dump(exclude_unset=True)
+        if update_dict:
+            await self._tenant_dao.update({"tenant_id": tenant_id}, update_dict)
+
+        updated = await self._tenant_dao.find_one({"tenant_id": tenant_id})
+        if updated is None:
+            raise TenantNotFoundError(f"Tenant '{tenant_id}' not found after update")
+
+        logger.info(
+            "tenant_updated",
+            extra={"operation": "update_tenant", "extra_data": {"tenant_id": tenant_id, "fields": list(update_dict)}},
+        )
+        return TenantUpdateResponse(
+            tenant_id=updated.tenant_id,
+            name=updated.name,
+            display_name=updated.display_name,
+            role=updated.role,
+            monthly_token_budget=updated.monthly_token_budget,
+            created_at=updated.created_at,
+        )
+
+    @service_method("update_tenant_budget")
+    async def update_budget(self, tenant_id: str, monthly_token_budget: int | None) -> TenantBudgetResponse:
+        tenant_doc = await self._tenant_dao.find_one({"tenant_id": tenant_id})
+        if not tenant_doc:
+            raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
+
+        await self._tenant_dao.update(
+            {"tenant_id": tenant_id},
+            {"monthly_token_budget": monthly_token_budget},
+        )
+        updated = await self._tenant_dao.find_one({"tenant_id": tenant_id})
+        if updated is None:
+            raise TenantNotFoundError(f"Tenant '{tenant_id}' not found after update")
+
+        logger.info(
+            "tenant_budget_updated",
+            extra={
+                "operation": "update_tenant_budget",
+                "extra_data": {
+                    "tenant_id": tenant_id,
+                    "monthly_token_budget": monthly_token_budget,
+                },
+            },
+        )
+        return TenantBudgetResponse(
+            tenant_id=updated.tenant_id,
+            name=updated.name,
+            display_name=updated.display_name,
+            rate_limit_rpm=updated.rate_limit_rpm,
+            role=updated.role,
+            monthly_token_budget=updated.monthly_token_budget,
+            created_at=updated.created_at,
+        )
+
+    @service_method("get_me")
+    async def get_me(self, tenant: TenantDocument) -> MeResponse:
+        return MeResponse(
+            tenant_id=tenant.tenant_id,
+            name=tenant.name,
+            display_name=tenant.display_name,
+            role=tenant.role,
+        )
+
+    @service_method("admin_list_tenants")
+    async def admin_list_tenants(self) -> AdminTenantListResponse:
+        tenants = await self._tenant_dao.find({}, sort=[("created_at", 1)], limit=1000)
+        items: list[AdminTenantItem] = []
+        for tenant in tenants:
+            agents = await self._agent_dao.find({"tenant_id": tenant.tenant_id})
+            items.append(
+                AdminTenantItem(
+                    tenant_id=tenant.tenant_id,
+                    name=tenant.name,
+                    display_name=tenant.display_name,
+                    role=tenant.role,
+                    monthly_token_budget=tenant.monthly_token_budget,
+                    created_at=tenant.created_at,
+                    agent_count=len(agents),
+                )
+            )
+        return AdminTenantListResponse(items=items, total=len(items))
+
+    async def bootstrap_admin(self, name: str, display_name: str, raw_key: str) -> None:
+        """Upsert the admin tenant using a pre-configured API key.
+
+        Called once on startup when ADMIN_API_KEY is set. Idempotent: if the tenant
+        already exists it just updates the hash so the key stays in sync with config.
+        """
+        api_key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        existing = await self._tenant_dao.find_one({"name": name})
+        if existing:
+            await self._tenant_dao.update(
+                {"name": name},
+                {"api_key_hash": api_key_hash, "role": "admin", "display_name": display_name},
+            )
+            logger.info("admin_tenant_refreshed", extra={"operation": "bootstrap_admin"})
+            return
+
+        settings = self._settings_getter()
+        tenant = TenantDocument(
+            tenant_id=str(ObjectId()),
+            name=name,
+            display_name=display_name,
+            api_key_hash=api_key_hash,
+            role="admin",
+            rate_limit_rpm=settings.default_rate_limit_rpm,
+            created_at=datetime.now(UTC),
+        )
+        await self._tenant_dao.insert_one(tenant)
+        logger.info(
+            "admin_tenant_created",
+            extra={"operation": "bootstrap_admin", "extra_data": {"tenant_id": tenant.tenant_id}},
+        )
+
     # Legacy method names preserved for compatibility.
-    async def create_tenant(self, name: str) -> tuple[TenantDocument, str]:
-        return await self._create_tenant_legacy(name)
+    async def create_tenant(self, name: str, display_name: str | None = None) -> tuple[TenantDocument, str]:
+        return await self._create_tenant_legacy(name, display_name)
 
     async def list_tenants(self, cursor: str | None, limit: int) -> tuple[list[TenantListItem], str | None]:
         return await self._list_tenants_legacy(cursor, limit)
@@ -220,8 +350,8 @@ tenant_service = TenantService(
 
 
 # Legacy compatibility wrappers for non-story call sites.
-async def create_tenant(name: str) -> tuple[TenantDocument, str]:
-    return await tenant_service._create_tenant_legacy(name)
+async def create_tenant(name: str, display_name: str | None = None) -> tuple[TenantDocument, str]:
+    return await tenant_service._create_tenant_legacy(name, display_name)
 
 
 async def list_tenants(

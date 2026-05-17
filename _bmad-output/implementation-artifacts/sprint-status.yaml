@@ -1,5 +1,5 @@
 # generated: 2026-04-18T00:00:00Z
-# last_updated: 2026-05-07T00:00:00Z  # updated: sprint-change-proposal-2026-05-07 approved; 5 new stories added
+# last_updated: 2026-05-16T00:00:00Z  # updated: epic-11 added; 7 production-readiness stories created
 # project: truerag
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-18T00:00:00Z
-last_updated: 2026-05-07T00:00:00Z  # sprint-change-proposal-2026-05-07 approved; 5 addendum stories added
+last_updated: 2026-05-17T00:00:00Z  # epic-11 all stories marked done
 project: truerag
 project_key: NOKEY
 tracking_system: file-system
@@ -138,3 +138,14 @@ development_status:
   10-4-github-actions-cicd-pipeline-with-ragas-eval-gate: review
   10-5-local-development-docker-compose: review
   epic-10-retrospective: optional
+
+  # Epic 11: Production-Readiness & Advanced Features
+  epic-11: done
+  11-1-sse-token-streaming-for-query-endpoint: done
+  11-2-conversation-memory-and-multi-turn-chat: done
+  11-3-per-query-hallucination-guardrail: done
+  11-4-rbac-and-token-budget-enforcement: done
+  11-5-document-quality-ocr-tables-and-deduplication: done
+  11-6-circuit-breakers-dlq-handler-and-ingestion-hardening: done
+  11-7-advanced-retrieval-hyde-multi-query-and-mmr: done
+  epic-11-retrospective: optional

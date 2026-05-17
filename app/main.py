@@ -16,11 +16,13 @@ from app.core.exception_handlers import generic_exception_handler, truerag_excep
 from app.core.middleware import RequestIDMiddleware, RequestResponseLoggingMiddleware
 from app.core.rate_limiter import RateLimiterMiddleware
 from app.models.agent import AgentDocument
+from app.models.conversation import ConversationSession
 from app.models.document import DocumentRecord
 from app.models.eval import EvalDataset, EvalExperiment
 from app.models.ingestion_job import IngestionJob
 from app.models.query_cost import QueryCost
 from app.models.tenant import TenantDocument
+from app.services.tenant_service import tenant_service
 from app.utils import semantic_cache
 from app.utils.observability import configure_logging, get_logger
 
@@ -49,11 +51,25 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
                 EvalDataset,
                 EvalExperiment,
                 QueryCost,
+                ConversationSession,
             ],
         )
         logger.info("beanie_initialized", extra={"operation": "app_startup"})
         await db["tenants"].create_index([("name", 1)], unique=True)
         logger.info("mongodb_connected", extra={"operation": "app_startup"})
+
+        if settings.admin_api_key:
+            try:
+                await tenant_service.bootstrap_admin(
+                    name=settings.admin_tenant_name,
+                    display_name=settings.admin_display_name,
+                    raw_key=settings.admin_api_key,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "admin_bootstrap_failed",
+                    extra={"operation": "app_startup", "extra_data": {"error": str(exc)}},
+                )
     except Exception as exc:
         logger.error(
             "mongodb_failed",

@@ -41,6 +41,13 @@ class EvalExperiment(Document):
         name = "eval_experiments"
 
 
+class EvalDatasetGetResponse(BaseModel):
+    dataset_id: str | None
+    agent_id: str
+    questions: list[EvalQuestion]
+    created_at: datetime | None
+
+
 class EvalDatasetCreateRequest(BaseModel):
     questions: list[EvalQuestion] = Field(min_length=1)
 

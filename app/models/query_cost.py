@@ -11,6 +11,8 @@ class QueryCost(Document):
     request_id: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    hyde_prompt_tokens: int = 0
+    hyde_completion_tokens: int = 0
     embedding_calls: int = 0
     reranker_calls: int = 0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

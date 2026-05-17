@@ -1,7 +1,9 @@
 import time
 
+from app.core.errors import CircuitOpenError
 from app.models.agent import AgentDocument
 from app.providers.registry import LLM_REGISTRY
+from app.utils.circuit_breaker import CircuitBreaker
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
@@ -15,7 +17,11 @@ Rewritten query:
 """
 
 
-async def rewrite_query(query: str, agent: AgentDocument) -> str:
+async def rewrite_query(
+    query: str,
+    agent: AgentDocument,
+    circuit_breaker: CircuitBreaker | None = None,
+) -> str:
     t0 = time.perf_counter()
     llm_cls = LLM_REGISTRY.get(agent.llm_provider)
     if not llm_cls:
@@ -35,9 +41,14 @@ async def rewrite_query(query: str, agent: AgentDocument) -> str:
     llm = llm_cls()
     prompt = REWRITE_PROMPT_TEMPLATE.format(query=query)
     try:
-        rewritten_query = (await llm.generate(prompt, context=[])).strip()
+        if circuit_breaker is None:
+            rewritten_query = (await llm.generate(prompt, context=[])).strip()
+        else:
+            rewritten_query = (await circuit_breaker.call(llm.generate, prompt, context=[])).strip()
         if not rewritten_query:
             rewritten_query = query
+    except CircuitOpenError:
+        raise
     except Exception:
         logger.warning(
             "query_rewrite_failed",

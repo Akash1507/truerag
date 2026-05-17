@@ -1,13 +1,12 @@
 from datetime import UTC, datetime, timedelta
-from collections.abc import Awaitable, Callable
-from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Any
 
 from fastapi import Request
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, generate_latest
 
 from app.core.config import get_settings
-from app.core.errors import InvalidCursorError, ProviderUnavailableError, TrueRAGError
+from app.core.decorators import service_method
+from app.core.errors import ProviderUnavailableError
 from app.db.dao.query_cost_dao import QueryCostDAO, query_cost_dao
 
 _REGISTRY = CollectorRegistry()
@@ -37,31 +36,6 @@ _INGESTION_JOBS = Counter(
     registry=_REGISTRY,
 )
 METRICS_CONTENT_TYPE: str = CONTENT_TYPE_LATEST
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-try:
-    from app.core.decorators import service_method  # type: ignore[import-not-found]
-except Exception:
-    def service_method(
-        operation: str,
-    ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-        def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-            @wraps(func)
-            async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                try:
-                    return await func(*args, **kwargs)
-                except TrueRAGError:
-                    raise
-                except ValueError as exc:
-                    raise InvalidCursorError(str(exc)) from exc
-                except Exception:
-                    raise
-
-            return wrapper
-
-        return decorator
 
 
 class MetricsService:
@@ -148,15 +122,3 @@ class MetricsService:
 
 
 metrics_service = MetricsService(query_cost_dao_dep=query_cost_dao)
-
-
-def record_query(tenant_id: str, agent_id: str, latency_ms: int, total_tokens: int) -> None:
-    metrics_service.record_query(tenant_id, agent_id, latency_ms, total_tokens)
-
-
-def generate_metrics_text() -> bytes:
-    return metrics_service.generate_metrics_text()
-
-
-async def get_cost_breakdown(time_window_hours: int = 24) -> list[dict[str, Any]]:
-    return await metrics_service.get_cost_breakdown(time_window_hours)

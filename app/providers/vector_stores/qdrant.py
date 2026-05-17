@@ -60,7 +60,12 @@ class QdrantVectorStore(VectorStore):
             raise ProviderUnavailableError(f"qdrant upsert failed: {exc}") from exc
 
     async def query(
-        self, namespace: str, vector: list[float], top_k: int, filters: dict[str, str] | None
+        self,
+        namespace: str,
+        vector: list[float],
+        top_k: int,
+        filters: dict[str, str] | None,
+        include_embeddings: bool = False,
     ) -> list[VectorResult]:
         try:
             client = await self._get_client()
@@ -77,6 +82,7 @@ class QdrantVectorStore(VectorStore):
                 query=vector,
                 limit=top_k,
                 query_filter=search_filter,
+                with_vectors=include_embeddings,
             )
         except Exception as exc:
             raise ProviderUnavailableError(f"qdrant query failed: {exc}") from exc
@@ -102,12 +108,22 @@ class QdrantVectorStore(VectorStore):
                 )
             metadata = ChunkMetadata.model_validate(payload.get("metadata", {}))
             text = str(payload.get("text", ""))
+            embedding: list[float] | None = None
+            if include_embeddings:
+                raw_vector = getattr(hit, "vector", None)
+                if isinstance(raw_vector, list):
+                    embedding = [float(value) for value in raw_vector]
+                elif isinstance(raw_vector, dict):
+                    values = next(iter(raw_vector.values()), None)
+                    if isinstance(values, list):
+                        embedding = [float(value) for value in values]
             results.append(
                 VectorResult(
                     id=str(hit.id),
                     score=float(hit.score),
                     metadata=metadata,
                     text=text,
+                    embedding=embedding,
                 )
             )
         return results
@@ -137,6 +153,40 @@ class QdrantVectorStore(VectorStore):
             return results
         except Exception as exc:
             raise ProviderUnavailableError(f"qdrant fetch_all failed: {exc}") from exc
+
+    async def list_hashes(self, namespace: str) -> set[str]:
+        try:
+            client = await self._get_client()
+            exists = await client.collection_exists(collection_name=namespace)
+            if not exists:
+                return set()
+
+            hashes: set[str] = set()
+            offset = None
+            while True:
+                points, next_offset = await client.scroll(
+                    collection_name=namespace,
+                    limit=100,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = cast(dict[str, object], point.payload or {})
+                    direct_hash = payload.get("content_hash")
+                    if direct_hash:
+                        hashes.add(str(direct_hash))
+                        continue
+                    metadata = cast(dict[str, object], payload.get("metadata", {}))
+                    metadata_hash = metadata.get("content_hash")
+                    if metadata_hash:
+                        hashes.add(str(metadata_hash))
+                if next_offset is None:
+                    break
+                offset = next_offset
+            return hashes
+        except Exception as exc:
+            raise ProviderUnavailableError(f"qdrant list_hashes failed: {exc}") from exc
 
     async def delete_namespace(self, namespace: str) -> None:
         try:

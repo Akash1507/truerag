@@ -17,6 +17,7 @@ class ErrorCode(StrEnum):
     UNAUTHORIZED = "UNAUTHORIZED"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    CIRCUIT_OPEN = "CIRCUIT_OPEN"
     INGESTION_ERROR = "INGESTION_ERROR"
     PARSE_ERROR = "PARSE_ERROR"
     PERMANENT_INGESTION_ERROR = "PERMANENT_INGESTION_ERROR"
@@ -24,6 +25,9 @@ class ErrorCode(StrEnum):
     DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
     EVAL_DATASET_NOT_FOUND = "EVAL_DATASET_NOT_FOUND"
     EVAL_NO_DATASET = "EVAL_NO_DATASET"
+    SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+    SESSION_EXPIRED = "SESSION_EXPIRED"
+    TOKEN_BUDGET_EXCEEDED = "TOKEN_BUDGET_EXCEEDED"
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
 
 
@@ -72,6 +76,26 @@ class ProviderUnavailableError(TrueRAGError):
         self,
         message: str = "Provider unavailable",
         code: ErrorCode = ErrorCode.PROVIDER_UNAVAILABLE,
+        http_status: int = 503,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class ServiceUnavailableError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Service unavailable",
+        code: ErrorCode = ErrorCode.PROVIDER_UNAVAILABLE,
+        http_status: int = 503,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class CircuitOpenError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Circuit is open",
+        code: ErrorCode = ErrorCode.CIRCUIT_OPEN,
         http_status: int = 503,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)
@@ -232,6 +256,36 @@ class EvalNoDatasetError(TrueRAGError):
         self,
         message: str = "No eval dataset configured for this agent",
         code: ErrorCode = ErrorCode.EVAL_NO_DATASET,
-        http_status: int = 422,
+        http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class TokenBudgetExceededError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Monthly token budget exceeded",
+        code: ErrorCode = ErrorCode.TOKEN_BUDGET_EXCEEDED,
+        http_status: int = 429,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class SessionNotFoundError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Session not found",
+        code: ErrorCode = ErrorCode.SESSION_NOT_FOUND,
+        http_status: int = 404,
+    ) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
+class SessionExpiredError(TrueRAGError):
+    def __init__(
+        self,
+        message: str = "Session expired",
+        code: ErrorCode = ErrorCode.SESSION_EXPIRED,
+        http_status: int = 410,
     ) -> None:
         super().__init__(code=code, message=message, http_status=http_status)

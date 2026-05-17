@@ -3,6 +3,7 @@ from typing import Literal, cast
 from app.core.errors import ProviderUnavailableError
 from app.models.agent import AgentDocument
 from app.providers.registry import LLM_REGISTRY
+from app.utils.circuit_breaker import CircuitBreaker
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
@@ -21,13 +22,21 @@ async def route_query(
     agent: AgentDocument,
     request_id: str | None,
     tenant_id: str,
+    circuit_breaker: CircuitBreaker | None = None,
 ) -> Literal["retrieval", "direct"]:
     llm_cls = LLM_REGISTRY.get(agent.llm_provider)
     if not llm_cls:
         raise ProviderUnavailableError(f"LLM provider '{agent.llm_provider}' not registered")
 
     llm = llm_cls()
-    route_raw = await llm.generate(ROUTING_PROMPT_TEMPLATE.format(query=query), context=[])
+    if circuit_breaker is None:
+        route_raw = await llm.generate(ROUTING_PROMPT_TEMPLATE.format(query=query), context=[])
+    else:
+        route_raw = await circuit_breaker.call(
+            llm.generate,
+            ROUTING_PROMPT_TEMPLATE.format(query=query),
+            context=[],
+        )
     route = route_raw.strip().lower()
     if route not in {"retrieval", "direct"}:
         route = "retrieval"

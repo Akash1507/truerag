@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import get_settings
 from app.models.agent import AgentDocument
+from app.models.conversation import ConversationSession
 from app.models.document import DocumentRecord
 from app.models.ingestion_job import IngestionJob
 from app.models.tenant import TenantDocument
@@ -31,7 +32,13 @@ async def _run_with_backend_or_session() -> None:
         db = motor_client[settings.mongodb_database]
         await init_beanie(
             database=db,
-            document_models=[TenantDocument, AgentDocument, DocumentRecord, IngestionJob],
+            document_models=[
+                TenantDocument,
+                AgentDocument,
+                DocumentRecord,
+                IngestionJob,
+                ConversationSession,
+            ],
         )
 
         aws_session = aioboto3.Session()

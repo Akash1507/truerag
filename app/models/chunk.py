@@ -9,6 +9,7 @@ class ChunkMetadata(BaseModel):
     chunking_strategy: str
     timestamp: AwareDatetime
     version: int = Field(ge=0)
+    content_hash: str | None = None
     parent_text: str | None = None
 
 
@@ -30,3 +31,4 @@ class VectorResult(BaseModel):
     score: float
     metadata: ChunkMetadata
     text: str
+    embedding: list[float] | None = None

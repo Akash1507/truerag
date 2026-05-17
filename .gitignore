@@ -35,3 +35,13 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI tooling / local workspace (untracked, not deleted)
+_bmad/
+_bmad-output/
+.agent/
+.agents/
+local_storage/
+.claude/
+.cursor/
+.gemini/

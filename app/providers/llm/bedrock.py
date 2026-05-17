@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import aioboto3
@@ -83,3 +84,11 @@ class BedrockLLMProvider(LLMProvider):
             raise ProviderUnavailableError(f"Bedrock API error ({code}): {exc}") from exc
         except Exception as exc:
             raise ProviderUnavailableError(f"Bedrock API error: {exc}") from exc
+
+    async def stream_generate(
+        self,
+        prompt: str,
+        context: list[Chunk],
+    ) -> AsyncGenerator[str, None]:
+        answer = await self.generate(prompt, context)
+        yield answer

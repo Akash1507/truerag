@@ -22,8 +22,11 @@ def service_method(operation: str) -> Callable[[AsyncFn[P, R]], AsyncFn[P, R]]:
                 result = await fn(*args, **kwargs)
                 bound_logger.debug(f"{operation}_ok")
                 return result
-            except TrueRAGError:
-                bound_logger.warning(f"{operation}_truerag_error")
+            except TrueRAGError as exc:
+                bound_logger.warning(
+                    f"{operation}_truerag_error",
+                    extra={"extra_data": {"error_code": exc.code.value if hasattr(exc, 'code') else None, "error": str(exc)}},
+                )
                 raise
             except ValueError as exc:
                 bound_logger.warning(f"{operation}_invalid_cursor | {exc}")

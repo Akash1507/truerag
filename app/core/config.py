@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     local_storage_path: str = "./local_storage"
     dynamodb_audit_table: str = "truerag-audit-log"
     semantic_cache_ttl_hours: int = 24
+    max_document_bytes: int = 52_428_800
+    max_dlq_retries: int = 3
+
+    # Bootstrap admin: if set, upserted as admin tenant on every startup
+    admin_api_key: str | None = None
+    admin_tenant_name: str = "admin"
+    admin_display_name: str = "Platform Admin"
 
     @field_validator("log_level")
     @classmethod

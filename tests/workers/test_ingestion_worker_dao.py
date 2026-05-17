@@ -38,6 +38,15 @@ def _make_agent() -> MagicMock:
     return agent
 
 
+@pytest.fixture(autouse=True)
+def _mock_atomic_set_processing() -> object:
+    with patch(
+        "app.workers.ingestion_worker.ingestion_job_dao.set_processing",
+        AsyncMock(return_value=True),
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_process_job_updates_processing_then_ready() -> None:
     current_doc = MagicMock(version=1, lineage_id="lineage-1")

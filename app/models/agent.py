@@ -20,6 +20,7 @@ class AgentDocument(Document):
     agent_id: str
     tenant_id: str
     name: str
+    display_name: str | None = None
     chunking_strategy: str
     chunk_size: int = Field(default=512, ge=64, le=8192)
     chunk_overlap: int = Field(default=50, ge=0, le=512)
@@ -29,6 +30,13 @@ class AgentDocument(Document):
     retrieval_mode: str
     reranker: str
     query_rewrite: bool = False
+    hallucination_check_enabled: bool = False
+    hyde_enabled: bool = False
+    multi_query_enabled: bool = False
+    multi_query_count: int = Field(default=3, ge=1, le=5)
+    mmr_enabled: bool = False
+    mmr_lambda: float = Field(default=0.5, ge=0.0, le=1.0)
+    context_window_tokens: int = Field(default=8192, ge=1024, le=128000)
     rerank_pool_size: int = Field(default=20, ge=1, le=200)
     top_k: int
     semantic_cache_enabled: bool
@@ -62,6 +70,7 @@ AgentName = Annotated[
 
 class AgentCreateRequest(BaseModel):
     name: AgentName
+    display_name: str | None = None
     chunking_strategy: str
     chunk_size: int = Field(default=512, ge=64, le=8192)
     chunk_overlap: int = Field(default=50, ge=0, le=512)
@@ -71,6 +80,12 @@ class AgentCreateRequest(BaseModel):
     retrieval_mode: str
     reranker: str
     query_rewrite: bool = False
+    hyde_enabled: bool = False
+    multi_query_enabled: bool = False
+    multi_query_count: int = Field(default=3, ge=1, le=5)
+    mmr_enabled: bool = False
+    mmr_lambda: float = Field(default=0.5, ge=0.0, le=1.0)
+    context_window_tokens: int = Field(default=8192, ge=1024, le=128000)
     rerank_pool_size: int = Field(default=20, ge=1, le=200)
     top_k: int = Field(ge=1, le=100)
     tenant_id: str | None = None
@@ -89,6 +104,7 @@ class AgentCreateResponse(BaseModel):
     agent_id: str
     tenant_id: str
     name: str
+    display_name: str | None = None
     chunking_strategy: str
     chunk_size: int
     chunk_overlap: int
@@ -98,6 +114,13 @@ class AgentCreateResponse(BaseModel):
     retrieval_mode: str
     reranker: str
     query_rewrite: bool
+    hallucination_check_enabled: bool
+    hyde_enabled: bool
+    multi_query_enabled: bool
+    multi_query_count: int
+    mmr_enabled: bool
+    mmr_lambda: float
+    context_window_tokens: int
     rerank_pool_size: int
     top_k: int
     semantic_cache_enabled: bool
@@ -111,6 +134,7 @@ class AgentCreateResponse(BaseModel):
 class AgentConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    display_name: str | None = None
     chunking_strategy: str | None = None
     chunk_size: int | None = Field(default=None, ge=64, le=8192)
     chunk_overlap: int | None = Field(default=None, ge=0, le=512)
@@ -120,6 +144,13 @@ class AgentConfigUpdateRequest(BaseModel):
     retrieval_mode: str | None = None
     reranker: str | None = None
     query_rewrite: bool | None = None
+    hallucination_check_enabled: bool | None = None
+    hyde_enabled: bool | None = None
+    multi_query_enabled: bool | None = None
+    multi_query_count: int | None = Field(default=None, ge=1, le=5)
+    mmr_enabled: bool | None = None
+    mmr_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
+    context_window_tokens: int | None = Field(default=None, ge=1024, le=128000)
     rerank_pool_size: int | None = Field(default=None, ge=1, le=200)
     top_k: int | None = Field(default=None, ge=1, le=100)
     semantic_cache_enabled: bool | None = None
@@ -143,6 +174,7 @@ class AgentUpdateResponse(BaseModel):
     agent_id: str
     tenant_id: str
     name: str
+    display_name: str | None = None
     chunking_strategy: str
     chunk_size: int
     chunk_overlap: int
@@ -152,6 +184,13 @@ class AgentUpdateResponse(BaseModel):
     retrieval_mode: str
     reranker: str
     query_rewrite: bool
+    hallucination_check_enabled: bool
+    hyde_enabled: bool
+    multi_query_enabled: bool
+    multi_query_count: int
+    mmr_enabled: bool
+    mmr_lambda: float
+    context_window_tokens: int
     rerank_pool_size: int
     top_k: int
     semantic_cache_enabled: bool

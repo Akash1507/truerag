@@ -20,14 +20,14 @@ def test_parse_md_returns_utf8_text() -> None:
 
 def test_parse_pdf_extracts_text() -> None:
     mock_page = MagicMock()
-    mock_page.extract_text.return_value = "Page one content"
+    mock_page.extract_text.return_value = "Page one content " * 4
     mock_reader = MagicMock()
     mock_reader.pages = [mock_page]
 
     with patch("app.pipelines.ingestion.parser.pypdf.PdfReader", return_value=mock_reader):
         result = parse_document(b"%PDF-fake", "pdf")
 
-    assert result == "Page one content"
+    assert result == "Page one content " * 4
 
 
 def test_parse_docx_extracts_paragraphs() -> None:

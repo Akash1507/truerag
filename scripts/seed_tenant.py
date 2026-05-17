@@ -15,6 +15,11 @@ def _parse_args() -> argparse.Namespace:
         help="TrueRAG API base URL (default: http://localhost:8000)",
     )
     parser.add_argument(
+        "--admin-key",
+        required=True,
+        help="Admin API key (set via ADMIN_API_KEY env var on the server)",
+    )
+    parser.add_argument(
         "--tenant-name",
         default=f"locust-tenant-{int(time.time())}",
         help="Tenant name to create",
@@ -27,9 +32,14 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def _seed(base_url: str, tenant_name: str, agent_name: str) -> None:
+async def _seed(base_url: str, admin_key: str, tenant_name: str, agent_name: str) -> None:
     async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
-        tenant_resp = await client.post("/v1/tenants", json={"name": tenant_name})
+        admin_headers = {"X-API-Key": admin_key}
+        tenant_resp = await client.post(
+            "/v1/tenants",
+            json={"name": tenant_name},
+            headers=admin_headers,
+        )
         tenant_resp.raise_for_status()
         tenant = tenant_resp.json()
 
@@ -65,6 +75,7 @@ async def main() -> None:
     args = _parse_args()
     await _seed(
         base_url=args.base_url.rstrip("/"),
+        admin_key=args.admin_key,
         tenant_name=args.tenant_name,
         agent_name=args.agent_name,
     )

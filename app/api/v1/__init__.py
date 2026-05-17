@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import agents, documents, eval, observability, query, tenants
+from app.api.v1 import admin, agents, configs, documents, eval, observability, query, tenants
 
 router = APIRouter(prefix="/v1")
 
@@ -10,3 +10,5 @@ router.include_router(documents.router, prefix="/agents", tags=["documents"])
 router.include_router(query.router, prefix="/agents", tags=["query"])
 router.include_router(eval.router, prefix="/agents", tags=["eval"])
 router.include_router(observability.router, tags=["observability"])
+router.include_router(configs.router, prefix="/configs", tags=["configs"])
+router.include_router(admin.router, prefix="/admin", tags=["admin"])

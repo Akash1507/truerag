@@ -1,15 +1,20 @@
 import hashlib
+from collections.abc import Callable
+from typing import Literal
 
+from fastapi import Depends
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.core.errors import AuthenticationError, ErrorCode, NamespaceViolationError
+from app.core.errors import AuthenticationError, ErrorCode, ForbiddenError, NamespaceViolationError
 from app.db.dao.tenant_dao import tenant_dao
 from app.models.tenant import TenantDocument
 from app.utils.observability import get_logger
 
 logger = get_logger(__name__)
+TenantRole = Literal["admin", "agent_owner", "reader"]
+_MUTATING_METHODS = {"POST", "PATCH", "DELETE"}
 
 SKIP_AUTH_PATHS: frozenset[str] = frozenset({
     "/v1/health",
@@ -21,11 +26,6 @@ SKIP_AUTH_PATHS: frozenset[str] = frozenset({
     "/redoc",
     "/openapi.json",
 })
-
-SKIP_AUTH_METHOD_PATHS: frozenset[tuple[str, str]] = frozenset({
-    ("POST", "/v1/tenants"),
-})
-
 
 def _hash_api_key(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode()).hexdigest()
@@ -43,7 +43,7 @@ def _auth_error(
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path.rstrip("/") or "/"
-        if path in SKIP_AUTH_PATHS or (request.method, path) in SKIP_AUTH_METHOD_PATHS:
+        if path in SKIP_AUTH_PATHS:
             return await call_next(request)
 
         request_id: str = getattr(request.state, "request_id", "unknown")
@@ -98,6 +98,20 @@ def get_current_tenant(request: Request) -> TenantDocument:
     if not hasattr(request.state, "tenant"):
         raise AuthenticationError()
     return request.state.tenant  # type: ignore[no-any-return]
+
+
+def require_role(*roles: TenantRole) -> Callable[..., TenantDocument]:
+    async def dependency(
+        request: Request,
+        tenant: TenantDocument = Depends(get_current_tenant),  
+    ) -> TenantDocument:
+        if tenant.role not in roles:
+            if tenant.role == "reader" and request.method in _MUTATING_METHODS:
+                raise ForbiddenError("Reader role cannot perform write operations")
+            raise ForbiddenError("Insufficient role")
+        return tenant
+
+    return dependency
 
 
 def verify_tenant_ownership(authenticated_tenant_id: str, resource_tenant_id: str) -> None:

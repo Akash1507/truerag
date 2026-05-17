@@ -17,9 +17,11 @@ from app.core.errors import (
     AgentNotFoundError,
     ForbiddenError,
     InvalidCursorError,
+    SessionNotFoundError,
     TrueRAGError,
 )
 from app.db.dao.agent_dao import AgentDAO, agent_dao
+from app.db.dao.conversation_dao import ConversationSessionDAO, conversation_dao
 from app.db.dao.document_dao import DocumentDAO, document_dao
 from app.db.dao.ingestion_job_dao import IngestionJobDAO, ingestion_job_dao
 from app.models.agent import (
@@ -36,6 +38,7 @@ from app.models.agent import (
     AgentListResponse,
     AgentUpdateResponse,
 )
+from app.models.conversation import SessionDetailResponse, SessionListResponse, SessionSummary
 from app.utils.observability import get_logger
 from app.utils.pagination import DEFAULT_PAGE_SIZE, decode_cursor, encode_cursor
 
@@ -95,11 +98,13 @@ class AgentService:
         dao: AgentDAO,
         document_dao_dep: DocumentDAO,
         ingestion_job_dao_dep: IngestionJobDAO,
+        conversation_dao_dep: ConversationSessionDAO,
         vector_store_getter: Callable[[str], Any] = get_vector_store,
     ) -> None:
         self._dao = dao
         self._document_dao = document_dao_dep
         self._ingestion_job_dao = ingestion_job_dao_dep
+        self._conversation_dao = conversation_dao_dep
         self._vector_store_getter = vector_store_getter
 
     async def _get_agent_document(self, agent_id: str, tenant_id: str) -> AgentDocument:
@@ -150,6 +155,7 @@ class AgentService:
         provided_fields = request.model_fields_set
         update_dict: dict[str, object] = {}
         for field in (
+            "display_name",
             "chunking_strategy",
             "chunk_size",
             "chunk_overlap",
@@ -159,6 +165,13 @@ class AgentService:
             "retrieval_mode",
             "reranker",
             "query_rewrite",
+            "hallucination_check_enabled",
+            "hyde_enabled",
+            "multi_query_enabled",
+            "multi_query_count",
+            "mmr_enabled",
+            "mmr_lambda",
+            "context_window_tokens",
             "rerank_pool_size",
             "top_k",
             "semantic_cache_enabled",
@@ -270,6 +283,7 @@ class AgentService:
             agent_id=agent_id,
             tenant_id=tenant_id,
             name=request.name,
+            display_name=request.display_name,
             chunking_strategy=request.chunking_strategy,
             chunk_size=request.chunk_size,
             chunk_overlap=request.chunk_overlap,
@@ -279,6 +293,12 @@ class AgentService:
             retrieval_mode=request.retrieval_mode,
             reranker=request.reranker,
             query_rewrite=request.query_rewrite,
+            hyde_enabled=request.hyde_enabled,
+            multi_query_enabled=request.multi_query_enabled,
+            multi_query_count=request.multi_query_count,
+            mmr_enabled=request.mmr_enabled,
+            mmr_lambda=request.mmr_lambda,
+            context_window_tokens=request.context_window_tokens,
             rerank_pool_size=request.rerank_pool_size,
             top_k=request.top_k,
             semantic_cache_enabled=request.semantic_cache_enabled,
@@ -381,6 +401,39 @@ class AgentService:
             },
         )
 
+    @service_method("list_sessions")
+    async def list_sessions(self, agent_id: str, tenant_id: str) -> SessionListResponse:
+        await self._get_agent_document(agent_id, tenant_id)
+        sessions = await self._conversation_dao.list_sessions(agent_id, tenant_id)
+        summaries = [
+            SessionSummary(
+                session_id=s.session_id,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+                message_count=len(s.messages),
+                preview=next(
+                    (m.content[:80] for m in s.messages if m.role == "user"), None
+                ),
+            )
+            for s in sessions
+        ]
+        return SessionListResponse(sessions=summaries)
+
+    @service_method("get_session")
+    async def get_session(
+        self, agent_id: str, session_id: str, tenant_id: str
+    ) -> SessionDetailResponse:
+        await self._get_agent_document(agent_id, tenant_id)
+        session = await self._conversation_dao.get_session(session_id, agent_id, tenant_id)
+        if session is None:
+            raise SessionNotFoundError(f"Session '{session_id}' not found")
+        return SessionDetailResponse(
+            session_id=session.session_id,
+            messages=session.messages,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
     # Legacy method names preserved for compatibility.
     async def create_agent(self, request: AgentCreateRequest, tenant_id: str) -> AgentCreateResponse:
         return await self.create(request, tenant_id)
@@ -418,6 +471,7 @@ agent_service = AgentService(
     dao=agent_dao,
     document_dao_dep=document_dao,
     ingestion_job_dao_dep=ingestion_job_dao,
+    conversation_dao_dep=conversation_dao,
 )
 
 

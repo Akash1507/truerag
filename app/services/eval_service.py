@@ -17,6 +17,7 @@ from app.models.agent import AgentDocument
 from app.models.eval import (
     EvalDataset,
     EvalDatasetCreateResponse,
+    EvalDatasetGetResponse,
     EvalExperiment,
     EvalExperimentSummary,
     EvalHistoryResponse,
@@ -64,21 +65,46 @@ except Exception:
         return decorator
 
 
-def _run_ragas_sync(eval_data: list[dict[str, Any]]) -> RAGASScores:
-    from datasets import Dataset
+def _run_ragas_sync(eval_data: list[dict[str, Any]], openai_api_key: str, llm_model: str) -> RAGASScores:
+    from langchain_openai import ChatOpenAI, OpenAIEmbeddings
     from ragas import evaluate
+    from ragas.dataset_schema import EvaluationDataset, SingleTurnSample
+    from ragas.embeddings import LangchainEmbeddingsWrapper
+    from ragas.llms import LangchainLLMWrapper
     from ragas.metrics import answer_relevancy, context_precision, context_recall, faithfulness
 
-    dataset = Dataset.from_list(eval_data)
+    llm = LangchainLLMWrapper(ChatOpenAI(model=llm_model, api_key=openai_api_key))  # type: ignore[arg-type]
+    embeddings = LangchainEmbeddingsWrapper(OpenAIEmbeddings(api_key=openai_api_key))  # type: ignore[arg-type]
+
+    samples = [
+        SingleTurnSample(
+            user_input=row["question"],
+            response=row["answer"],
+            retrieved_contexts=row["contexts"],
+            reference=row["ground_truths"][0] if row["ground_truths"] else "",
+        )
+        for row in eval_data
+    ]
+    dataset = EvaluationDataset(samples=samples)
     result = evaluate(
-        dataset,
+        dataset=dataset,
         metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
+        llm=llm,
+        embeddings=embeddings,
     )
+    import statistics
+
+    def _mean(vals: Any) -> float:
+        if isinstance(vals, list):
+            clean = [v for v in vals if v is not None]
+            return statistics.mean(clean) if clean else 0.0
+        return float(vals)
+
     return RAGASScores(
-        faithfulness=float(result["faithfulness"]),
-        answer_relevancy=float(result["answer_relevancy"]),
-        context_recall=float(result["context_recall"]),
-        context_precision=float(result["context_precision"]),
+        faithfulness=_mean(result["faithfulness"]),
+        answer_relevancy=_mean(result["answer_relevancy"]),
+        context_recall=_mean(result["context_recall"]),
+        context_precision=_mean(result["context_precision"]),
     )
 
 
@@ -103,8 +129,34 @@ class EvalService:
         dataset: EvalDataset,
     ) -> list[dict[str, Any]]:
         eval_rows: list[dict[str, Any]] = []
-        for item in dataset.questions:
-            response = await run_query_pipeline(query=item.question, top_k=agent.top_k, agent=agent)
+        for idx, item in enumerate(dataset.questions):
+            logger.info(
+                "eval_query_start",
+                extra={
+                    "operation": "collect_eval_data",
+                    "extra_data": {
+                        "question_index": idx,
+                        "question": item.question[:80],
+                        "agent_id": agent.agent_id,
+                    },
+                },
+            )
+            try:
+                response = await run_query_pipeline(query=item.question, top_k=agent.top_k, agent=agent)
+            except Exception as exc:
+                logger.error(
+                    "eval_query_failed",
+                    extra={
+                        "operation": "collect_eval_data",
+                        "extra_data": {
+                            "question_index": idx,
+                            "question": item.question[:80],
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    },
+                )
+                raise
             eval_rows.append(
                 {
                     "question": item.question,
@@ -112,6 +164,17 @@ class EvalService:
                     "contexts": [citation.chunk_text for citation in response.citations],
                     "ground_truths": [item.expected_answer],
                 }
+            )
+            logger.info(
+                "eval_query_done",
+                extra={
+                    "operation": "collect_eval_data",
+                    "extra_data": {
+                        "question_index": idx,
+                        "route": "direct" if not response.citations else "retrieval",
+                        "citation_count": len(response.citations),
+                    },
+                },
             )
         return eval_rows
 
@@ -176,9 +239,7 @@ class EvalService:
     ) -> EvalDatasetCreateResponse:
         await self._agent_service.get_agent(agent_id, tenant_id)
 
-        existing = await self._eval_dataset_dao.find_one({"agent_id": agent_id})
-        if existing is not None:
-            await existing.delete()
+        await self._eval_dataset_dao.delete_many({"agent_id": agent_id, "tenant_id": tenant_id})
 
         dataset = EvalDataset(
             agent_id=agent_id,
@@ -217,26 +278,38 @@ class EvalService:
             created_at=dataset.created_at,
         )
 
-    @service_method("get_eval_dataset")
-    async def get_dataset(self, agent_id: str, tenant_id: str) -> EvalDataset:
+    async def _get_dataset_doc(self, agent_id: str, tenant_id: str) -> EvalDataset:
         await self._agent_service.get_agent(agent_id, tenant_id)
-        dataset = await self._eval_dataset_dao.find_one({"agent_id": agent_id})
+        dataset = await self._eval_dataset_dao.find_one({"agent_id": agent_id, "tenant_id": tenant_id})
         if dataset is None:
             raise EvalNoDatasetError(f"No eval dataset found for agent '{agent_id}'")
         return dataset
+
+    @service_method("get_eval_dataset")
+    async def get_dataset(self, agent_id: str, tenant_id: str) -> EvalDatasetGetResponse:
+        dataset = await self._get_dataset_doc(agent_id, tenant_id)
+        return EvalDatasetGetResponse(
+            dataset_id=str(dataset.id),
+            agent_id=dataset.agent_id,
+            questions=dataset.questions,
+            created_at=dataset.created_at,
+        )
 
     @service_method("run_evaluation")
     async def run_evaluation(self, agent_id: str, tenant_id: str) -> EvalExperiment:
         agent = await self._agent_service.get_agent(agent_id, tenant_id)
 
-        dataset = await self._eval_dataset_dao.find_one({"agent_id": agent_id})
+        dataset = await self._eval_dataset_dao.find_one({"agent_id": agent_id, "tenant_id": tenant_id})
         if dataset is None:
             raise EvalNoDatasetError(f"No eval dataset found for agent '{agent_id}'")
 
         eval_data = await _collect_eval_data(agent, dataset)
 
+        settings = self._settings_getter()
         loop = asyncio.get_event_loop()
-        ragas_scores = await loop.run_in_executor(None, _run_ragas_sync, eval_data)
+        ragas_scores = await loop.run_in_executor(
+            None, _run_ragas_sync, eval_data, settings.openai_api_key, settings.openai_llm_model
+        )
 
         baseline_delta = await _get_baseline_delta(agent_id, ragas_scores.faithfulness)
         triggered_alert = ragas_scores.faithfulness < agent.faithfulness_threshold
@@ -311,7 +384,7 @@ class EvalService:
         limit: int = 20,
     ) -> tuple[list[EvalExperiment], str | None]:
         await self._agent_service.get_agent(agent_id, tenant_id)
-        query: dict[str, object] = {"agent_id": agent_id}
+        query: dict[str, object] = {"agent_id": agent_id, "tenant_id": tenant_id}
         if cursor:
             oid = decode_cursor(cursor)
             query["_id"] = {"$lt": oid}
@@ -329,7 +402,7 @@ class EvalService:
         tenant_id: str,
         background_tasks: BackgroundTasks,
     ) -> EvalRunResponse | EvalRunAcceptedResponse:
-        dataset = await self.get_dataset(agent_id, tenant_id)
+        dataset = await self._get_dataset_doc(agent_id, tenant_id)
         if len(dataset.questions) > 20:
             run_id = str(uuid.uuid4())
             background_tasks.add_task(self.run_evaluation, agent_id, tenant_id)
@@ -385,9 +458,7 @@ class EvalService:
         questions: list[EvalQuestion],
     ) -> EvalDataset:
         await self._agent_service.get_agent(agent_id, tenant_id)
-        existing = await self._eval_dataset_dao.find_one({"agent_id": agent_id})
-        if existing is not None:
-            await existing.delete()
+        await self._eval_dataset_dao.delete_many({"agent_id": agent_id, "tenant_id": tenant_id})
         dataset = EvalDataset(
             agent_id=agent_id,
             tenant_id=tenant_id,
@@ -424,7 +495,7 @@ async def create_or_replace_dataset(
     return await eval_service.create_or_replace_dataset(agent_id, tenant_id, questions)
 
 
-async def get_dataset(agent_id: str, tenant_id: str) -> EvalDataset:
+async def get_dataset(agent_id: str, tenant_id: str) -> EvalDatasetGetResponse:
     return await eval_service.get_dataset(agent_id, tenant_id)
 
 

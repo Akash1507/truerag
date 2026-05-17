@@ -1,6 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 
-from app.core.auth import get_current_tenant
+from app.core.auth import require_role
 from app.models.query import QueryRequest, QueryResponse
 from app.models.tenant import TenantDocument
 from app.services.query_service import query_service
@@ -9,14 +9,18 @@ from app.utils.observability import reset_request_context, set_request_context
 router = APIRouter()
 
 
-@router.post("/{agent_id}/query", response_model=QueryResponse, status_code=200)
+@router.post(
+    "/{agent_id}/query",
+    response_model=QueryResponse,
+    status_code=200,
+)
 async def query_agent_route(
     agent_id: str,
     request: QueryRequest,
     background_tasks: BackgroundTasks,
     http_request: Request,
-    caller: TenantDocument = Depends(get_current_tenant),  # noqa: B008
-) -> QueryResponse:
+    caller: TenantDocument = Depends(require_role("admin", "agent_owner")),  
+) -> Response | QueryResponse:
     http_request.state.background_tasks = background_tasks
     request_id = getattr(http_request.state, "request_id", "")
     tokens = set_request_context(
@@ -31,6 +35,7 @@ async def query_agent_route(
             api_key_hash=caller.api_key_hash,
             request=request,
             background_tasks=background_tasks,
+            tenant=caller,
         )
     finally:
         reset_request_context(tokens)

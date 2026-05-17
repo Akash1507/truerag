@@ -4,6 +4,9 @@ from pathlib import Path
 import aioboto3  # type: ignore[import-untyped]
 
 from app.core.config import Settings
+from app.core.errors import PermanentIngestionError
+
+MAX_DOCUMENT_SIZE_ERROR = "Document exceeds maximum size of 50MB"
 
 
 async def put_file(
@@ -31,14 +34,22 @@ async def get_file(
 ) -> bytes:
     if settings.app_env == "local":
         path = Path(settings.local_storage_path) / s3_key
+        if path.stat().st_size > settings.max_document_bytes:
+            raise PermanentIngestionError(MAX_DOCUMENT_SIZE_ERROR)
         return await asyncio.to_thread(path.read_bytes)
     async with aws_session.client(
         "s3",
         region_name=settings.aws_region,
         endpoint_url=settings.aws_endpoint_url,
     ) as s3:
+        head = await s3.head_object(Bucket=settings.s3_document_bucket, Key=s3_key)
+        if int(head.get("ContentLength", 0)) > settings.max_document_bytes:
+            raise PermanentIngestionError(MAX_DOCUMENT_SIZE_ERROR)
         response = await s3.get_object(Bucket=settings.s3_document_bucket, Key=s3_key)
-        return await response["Body"].read()
+        content = await response["Body"].read()
+        if len(content) > settings.max_document_bytes:
+            raise PermanentIngestionError(MAX_DOCUMENT_SIZE_ERROR)
+        return content
 
 
 async def delete_file(

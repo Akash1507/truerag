@@ -6,6 +6,8 @@ from dataclasses import dataclass
 class QueryCostAccumulator:
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    hyde_prompt_tokens: int = 0
+    hyde_completion_tokens: int = 0
     embedding_calls: int = 0
     reranker_calls: int = 0
 
@@ -46,3 +48,11 @@ def record_reranker_call() -> None:
     if accumulator is None:
         return
     accumulator.reranker_calls += 1
+
+
+def record_hyde_usage(prompt_tokens: int, completion_tokens: int) -> None:
+    accumulator = get_cost_accumulator()
+    if accumulator is None:
+        return
+    accumulator.hyde_prompt_tokens += max(0, prompt_tokens)
+    accumulator.hyde_completion_tokens += max(0, completion_tokens)

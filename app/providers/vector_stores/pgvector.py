@@ -21,6 +21,20 @@ def _parse_jsonb(raw: object) -> dict:
     return raw  # type: ignore[return-value]
 
 
+def _to_embedding(raw: object) -> list[float] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return [float(v) for v in raw]
+    if isinstance(raw, tuple):
+        return [float(v) for v in raw]
+    if hasattr(raw, "tolist"):
+        values = raw.tolist()
+        if isinstance(values, list):
+            return [float(v) for v in values]
+    return None
+
+
 class PgVectorStore(VectorStore):
     _pool: asyncpg.Pool | None = None
     _pool_lock: asyncio.Lock | None = None
@@ -67,11 +81,21 @@ class PgVectorStore(VectorStore):
             raise ProviderUnavailableError(f"pgvector upsert failed: {exc}") from exc
 
     async def query(
-        self, namespace: str, vector: list[float], top_k: int, filters: dict[str, str] | None
+        self,
+        namespace: str,
+        vector: list[float],
+        top_k: int,
+        filters: dict[str, str] | None,
+        include_embeddings: bool = False,
     ) -> list[VectorResult]:
+        select_fields = "id, namespace, metadata, text, embedding <=> $2::vector AS distance"
+        if include_embeddings:
+            select_fields = (
+                "id, namespace, metadata, text, embedding, embedding <=> $2::vector AS distance"
+            )
         pool = await self._get_pool()
         sql = f"""
-            SELECT id, namespace, metadata, text, embedding <=> $2::vector AS distance
+            SELECT {select_fields}
             FROM {self._table_name}
             WHERE namespace = $1
         """
@@ -120,6 +144,7 @@ class PgVectorStore(VectorStore):
                     score=1.0 - float(row["distance"]),
                     metadata=ChunkMetadata.model_validate(metadata_dict),
                     text=row["text"],
+                    embedding=_to_embedding(row.get("embedding")) if include_embeddings else None,
                 )
             )
         return results
@@ -147,6 +172,25 @@ class PgVectorStore(VectorStore):
             )
             for row in rows
         ]
+
+    async def list_hashes(self, namespace: str) -> set[str]:
+        pool = await self._get_pool()
+        sql = f"""
+            SELECT metadata->>'content_hash' AS content_hash
+            FROM {self._table_name}
+            WHERE namespace = $1
+        """
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(sql, namespace)
+        except Exception as exc:
+            raise ProviderUnavailableError(f"pgvector list_hashes failed: {exc}") from exc
+
+        return {
+            str(row["content_hash"])
+            for row in rows
+            if row["content_hash"]
+        }
 
     async def delete_namespace(self, namespace: str) -> None:
         pool = await self._get_pool()
