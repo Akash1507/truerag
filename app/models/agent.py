@@ -39,8 +39,8 @@ class AgentDocument(Document):
     context_window_tokens: int = Field(default=8192, ge=1024, le=128000)
     rerank_pool_size: int = Field(default=20, ge=1, le=200)
     top_k: int
-    semantic_cache_enabled: bool
-    semantic_cache_threshold: float | None
+    semantic_cache_enabled: bool = False
+    semantic_cache_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     embedding_provider_mismatch: bool = False
     faithfulness_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     status: str
