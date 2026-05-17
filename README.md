@@ -1,6 +1,6 @@
 # TrueRAG
 
-Production-grade multi-tenant RAG engine. Pluggable vector stores, LLMs, embedders, chunkers, and rerankers — all switchable per agent via config, zero code changes.
+Multi-tenant RAG engine. Pluggable vector stores, LLMs, embedders, chunkers, and rerankers — switchable per agent via config, zero code changes.
 
 ---
 
@@ -217,35 +217,29 @@ python scripts/seed_tenant.py
 Authentication: `X-API-Key: <key>` on all requests.
 
 ```
-# Tenants
 POST   /v1/tenants                           Create tenant (admin)
 GET    /v1/tenants                           List tenants (admin)
 GET    /v1/tenants/me                        Current tenant
 
-# Agents
 POST   /v1/agents                            Create agent
 GET    /v1/agents                            List agents (cursor-paginated)
 GET    /v1/agents/{id}                       Get agent
 PATCH  /v1/agents/{id}/config                Update agent config
 
-# Documents
 POST   /v1/agents/{id}/documents             Upload & ingest document
 GET    /v1/agents/{id}/documents             List documents
 GET    /v1/agents/{id}/documents/{doc_id}    Document status
 DELETE /v1/agents/{id}/documents/{doc_id}    Delete document
 
-# Query
 POST   /v1/agents/{id}/query                 Query (JSON or SSE stream)
 GET    /v1/agents/{id}/sessions              List conversation sessions
 GET    /v1/agents/{id}/sessions/{sid}        Session message history
 
-# Eval
 POST   /v1/agents/{id}/eval                  Create / replace eval dataset
 GET    /v1/agents/{id}/eval                  Get eval dataset
 POST   /v1/agents/{id}/eval/run              Run RAGAS evaluation
 GET    /v1/agents/{id}/eval/history          Eval run history
 
-# Observability
 GET    /v1/metrics                           Prometheus metrics
 GET    /v1/metrics/costs                     Token cost breakdown
 GET    /v1/configs                           Available provider options
