@@ -1,234 +1,305 @@
 # TrueRAG
 
-Production-grade open-source RAG engine. Part of TruePlatform.
+Production-grade multi-tenant RAG engine. Pluggable vector stores, LLMs, embedders, chunkers, and rerankers — all switchable per agent via config, zero code changes.
 
-Multi-tenant, multi-provider retrieval-augmented generation platform with pluggable vector stores, LLMs, embeddings, chunking strategies, and rerankers — all switchable per agent via config with no code changes.
+---
 
-## Features
+## Architecture
 
-- **Multi-tenant** — isolated namespaces per tenant/agent, RBAC (admin / agent_owner / reader)
-- **Pluggable providers** — vector stores (pgvector, Qdrant, Pinecone), LLMs (Anthropic, OpenAI, Bedrock), embeddings (OpenAI, Cohere, Bedrock), rerankers (cross-encoder, Cohere, none)
-- **Retrieval modes** — dense, sparse (BM25), hybrid (dense + BM25 + RRF)
-- **Advanced chunking** — fixed, semantic (spaCy + sentence-transformers), hierarchical (parent/child), document-aware (Markdown/table-aware)
-- **Conversation memory** — multi-turn sessions with sliding-window context compaction (8192-token limit)
-- **Streaming** — SSE token-by-token query responses
-- **Semantic cache** — cosine-similarity deduplication of repeated queries
-- **Eval pipeline** — RAGAS (faithfulness, answer relevancy, context recall/precision) with regression detection
-- **Observability** — Prometheus metrics, structured JSON logging, per-stage latency tracking
+### System Overview
 
-## Prerequisites
+```mermaid
+graph TB
+    Client["Client / CI Gate"]
 
-- Docker & Docker Compose
-- Python 3.11+ (for bare-metal / tests)
-- [`uv`](https://github.com/astral-sh/uv)
+    subgraph API["API Layer (FastAPI)"]
+        Routes["Routes /v1/*"]
+        Auth["Auth + RBAC Middleware"]
+        RateLimit["Rate Limiter"]
+    end
 
-## Running Locally
+    subgraph Services["Service Layer"]
+        AgentSvc["Agent Service"]
+        QuerySvc["Query Service"]
+        IngestSvc["Ingestion Service"]
+        EvalSvc["Eval Service"]
+        TenantSvc["Tenant Service"]
+    end
 
-### 1. Configure environment
+    subgraph Pipelines["Pipeline Layer"]
+        QueryPipe["Query Pipeline"]
+        IngestPipe["Ingestion Pipeline"]
+    end
+
+    subgraph Providers["Provider Registry"]
+        VS["Vector Store\npgvector · Qdrant · Pinecone"]
+        Embed["Embedder\nOpenAI · Cohere · Bedrock"]
+        LLM["LLM\nAnthropic · OpenAI · Bedrock"]
+        Chunk["Chunker\nFixed · Semantic · Hierarchical · Doc-Aware"]
+        Rerank["Reranker\nCross-Encoder · Cohere · None"]
+    end
+
+    subgraph Queue["Queue Backend"]
+        Kafka["Kafka"]
+        SQS["SQS"]
+        Local["Local (dev)"]
+    end
+
+    subgraph Storage["Storage"]
+        Mongo[("MongoDB\nTenants · Agents · Docs")]
+        PG[("PostgreSQL\npgvector")]
+        Cache["Semantic Cache\n(pgvector)"]
+    end
+
+    Client --> Auth
+    Auth --> RateLimit --> Routes
+    Routes --> Services
+    AgentSvc & TenantSvc --> Mongo
+    QuerySvc --> QueryPipe
+    IngestSvc --> Queue
+    Queue --> IngestPipe
+    QueryPipe & IngestPipe --> Providers
+    Providers --> VS & Embed & LLM & Chunk & Rerank
+    VS --> PG
+    QuerySvc --> Cache
+```
+
+---
+
+### Query Pipeline
+
+```mermaid
+flowchart LR
+    Q["User Query"] --> Scrub["PII Scrub"]
+    Scrub --> Cache{"Semantic\nCache Hit?"}
+    Cache -- hit --> Resp["Response"]
+    Cache -- miss --> Budget{"Budget\nCheck"}
+    Budget -- exceeded --> Err429["429 Rate Limited"]
+    Budget -- ok --> Route{"Query\nRouter"}
+
+    Route -- direct --> Gen["LLM Generate"]
+    Route -- retrieval --> Rewrite{"Query\nRewrite?"}
+
+    Rewrite -- yes --> Rewriter["LLM Rewriter"]
+    Rewrite -- no --> Strategy
+
+    Rewriter --> Strategy{"Retrieval\nStrategy"}
+
+    Strategy -- dense --> Embed["Embed Query"]
+    Strategy -- sparse --> BM25["BM25 Search"]
+    Strategy -- hybrid --> Both["Dense + Sparse\n→ RRF Merge"]
+    Strategy -- hyde --> HyDE["Generate Hypothesis\n→ Embed"]
+    Strategy -- multi-query --> MQ["Generate N Variants\n→ RRF Merge"]
+
+    Embed & BM25 & Both & HyDE & MQ --> Rerank["Reranker\n(pool → top_k)"]
+    Rerank --> MMR{"MMR\nFilter?"}
+    MMR --> Gen
+
+    Gen --> Faith{"Faithfulness\nCheck?"}
+    Faith --> CacheStore["Cache Store"]
+    CacheStore --> Audit["Audit Log\n+ Cost Track"]
+    Audit --> Resp
+```
+
+---
+
+### Ingestion Pipeline
+
+```mermaid
+flowchart LR
+    Upload["Document Upload\n(API)"] --> Record["Create DB Record\n(pending)"]
+    Record --> Queue["Enqueue Job\nKafka / SQS / Local"]
+    Queue --> Worker["Ingestion Worker"]
+
+    Worker --> Fetch["Fetch from S3\n/ Local Store"]
+    Fetch --> Parse["Parse\nPDF · DOCX · TXT · MD\n+ OCR fallback\n+ table extract"]
+    Parse --> PII["PII Scrub\n(Presidio)"]
+    PII --> Chunk["Chunk\nFixed · Semantic\nHierarchical · Doc-Aware"]
+    Chunk --> Dedup["Hash Dedup\n(skip unchanged chunks)"]
+    Dedup --> Embed["Embed Chunks\n(batch)"]
+    Embed --> Upsert["Upsert Vector Store"]
+    Upsert --> MarkReady["Mark Document Ready\n+ Archive Predecessor"]
+
+    Worker -- failure --> DLQ["DLQ / Retry\n(3 attempts)"]
+    DLQ -- permanent --> MarkFailed["Mark Document Failed"]
+```
+
+---
+
+### Multi-Tenant Isolation
+
+```mermaid
+graph LR
+    subgraph TenantA["Tenant A"]
+        A1["Agent A1\nnamespace: tenantA_agentA1"]
+        A2["Agent A2\nnamespace: tenantA_agentA2"]
+    end
+    subgraph TenantB["Tenant B"]
+        B1["Agent B1\nnamespace: tenantB_agentB1"]
+    end
+
+    A1 & A2 & B1 --> VS["Vector Store\n(namespace-scoped reads/writes)"]
+    A1 & A2 & B1 --> Mongo["MongoDB\n(tenant_id filter on all queries)"]
+
+    VS -- "NamespaceViolationError\non mismatch" --> Guard["Isolation Guard"]
+```
+
+---
+
+## Quick Start
+
+### 1. Configure
 
 ```bash
 cp .env.example .env
+# Set API keys for the providers you want to use
 ```
 
-Edit `.env` and add API keys for the providers you plan to use:
-
-```dotenv
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-COHERE_API_KEY=...
-```
-
-### 2. Start all services
+### 2. Run (Docker)
 
 ```bash
 docker compose up --build
 ```
 
-This starts MongoDB, PostgreSQL+pgvector, Kafka, the API server, and the ingestion worker.
-
 | Service | URL |
 |---------|-----|
 | API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
+| Docs | http://localhost:8000/docs |
 | Health | http://localhost:8000/v1/health |
-| MongoDB | localhost:27017 |
-| PostgreSQL | localhost:5432 |
-| Kafka | localhost:9092 |
 
-### 3. Start only infrastructure (optional)
-
-If you want to run the API process directly on your machine:
+### 3. Run bare-metal (optional)
 
 ```bash
-# Start databases + kafka only
+# Start only infra
 docker compose up mongodb postgres kafka
 
-# Install dependencies
-uv sync --no-dev
+# Install deps
+uv sync
 source .venv/bin/activate
 python -m spacy download en_core_web_sm
 
-# Point to localhost services
-sed -i 's/mongodb:27017/localhost:27017/; s/@postgres:5432/@localhost:5432/; s/kafka:9092/localhost:9092/' .env
-
-# Run API
+# API
 uvicorn app.main:app --reload
 
-# Run worker (separate terminal)
+# Worker (separate terminal)
 python -m app.workers.entrypoint
 ```
 
-## Running Tests
+### 4. Seed a tenant
 
 ```bash
-uv sync
-source .venv/bin/activate
-
-# Unit tests
-pytest
-
-# Integration tests (require running databases)
-pytest -m integration
+python scripts/seed_tenant.py
 ```
+
+---
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `local` | `local` reads API keys from env directly; other values use AWS Secrets Manager |
-| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `OPENAI_API_KEY` | — | Required if using OpenAI LLM or embeddings |
-| `ANTHROPIC_API_KEY` | — | Required if using Anthropic LLM |
-| `COHERE_API_KEY` | — | Required if using Cohere embeddings or reranker |
-| `QDRANT_API_KEY` | — | Required if using Qdrant vector store |
-| `PINECONE_API_KEY` | — | Required if using Pinecone vector store |
-| `MONGODB_URI` | `mongodb://localhost:27017` | MongoDB connection URI |
+| `APP_ENV` | `local` | `local` reads keys from env; else uses AWS Secrets Manager |
+| `LOG_LEVEL` | `INFO` | `DEBUG` · `INFO` · `WARNING` · `ERROR` |
+| `MONGODB_URI` | `mongodb://localhost:27017` | MongoDB connection |
 | `PGVECTOR_DSN` | `postgresql://postgres:postgres@localhost:5432/truerag` | PostgreSQL DSN |
-| `QUEUE_BACKEND` | `kafka` | `kafka`, `sqs`, or `local` |
+| `QUEUE_BACKEND` | `kafka` | `kafka` · `sqs` · `local` |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka brokers |
-| `DEFAULT_RATE_LIMIT_RPM` | `60` | Per-tenant rate limit (requests/min) |
+| `DEFAULT_RATE_LIMIT_RPM` | `60` | Per-tenant rate limit |
+| `OPENAI_API_KEY` | — | OpenAI LLM / embeddings |
+| `ANTHROPIC_API_KEY` | — | Anthropic LLM |
+| `COHERE_API_KEY` | — | Cohere embeddings / reranker |
+| `QDRANT_API_KEY` | — | Qdrant vector store |
+| `PINECONE_API_KEY` | — | Pinecone vector store |
 
-## API Overview
+---
+
+## API Reference
+
+Authentication: `X-API-Key: <key>` on all requests.
 
 ```
-POST   /v1/tenants                          Create tenant
-GET    /v1/tenants/me                       Current tenant info
+# Tenants
+POST   /v1/tenants                           Create tenant (admin)
+GET    /v1/tenants                           List tenants (admin)
+GET    /v1/tenants/me                        Current tenant
 
-POST   /v1/agents                           Create agent
-GET    /v1/agents                           List agents (cursor-paginated)
-GET    /v1/agents/{id}                      Get agent
-PATCH  /v1/agents/{id}/config               Update agent config
+# Agents
+POST   /v1/agents                            Create agent
+GET    /v1/agents                            List agents (cursor-paginated)
+GET    /v1/agents/{id}                       Get agent
+PATCH  /v1/agents/{id}/config                Update agent config
 
-POST   /v1/agents/{id}/documents            Upload document (triggers ingestion)
-GET    /v1/agents/{id}/documents            List documents
-DELETE /v1/agents/{id}/documents/{doc_id}   Delete document
+# Documents
+POST   /v1/agents/{id}/documents             Upload & ingest document
+GET    /v1/agents/{id}/documents             List documents
+GET    /v1/agents/{id}/documents/{doc_id}    Document status
+DELETE /v1/agents/{id}/documents/{doc_id}    Delete document
 
-POST   /v1/agents/{id}/query                Query (streaming SSE or JSON)
-GET    /v1/agents/{id}/sessions             List conversation sessions
-GET    /v1/agents/{id}/sessions/{sid}       Get session messages
+# Query
+POST   /v1/agents/{id}/query                 Query (JSON or SSE stream)
+GET    /v1/agents/{id}/sessions              List conversation sessions
+GET    /v1/agents/{id}/sessions/{sid}        Session message history
 
-POST   /v1/agents/{id}/eval                 Create eval dataset
-GET    /v1/agents/{id}/eval                 Get eval dataset
-POST   /v1/agents/{id}/eval/run             Run RAGAS evaluation
-GET    /v1/agents/{id}/eval/history         Eval run history
+# Eval
+POST   /v1/agents/{id}/eval                  Create / replace eval dataset
+GET    /v1/agents/{id}/eval                  Get eval dataset
+POST   /v1/agents/{id}/eval/run              Run RAGAS evaluation
+GET    /v1/agents/{id}/eval/history          Eval run history
 
-GET    /v1/metrics                          Prometheus metrics
-GET    /v1/metrics/costs                    Token cost breakdown
-GET    /v1/configs                          Available provider options
-GET    /v1/health                           Health check
-GET    /v1/ready                            Readiness check
+# Observability
+GET    /v1/metrics                           Prometheus metrics
+GET    /v1/metrics/costs                     Token cost breakdown
+GET    /v1/configs                           Available provider options
+GET    /v1/health                            Health
+GET    /v1/ready                             Readiness
 ```
 
-Authentication: `X-API-Key: <key>` header on all requests.
+---
 
-## Architecture Decisions
+## Provider Matrix
 
-Key decisions made during development, captured here for contributors.
+| Category | Providers |
+|----------|-----------|
+| Vector Store | `pgvector` (default) · `qdrant` · `pinecone` |
+| Embedder | `openai` · `cohere` · `bedrock` |
+| LLM | `anthropic` · `openai` · `bedrock` |
+| Chunker | `fixed_size` · `semantic` · `hierarchical` · `document_aware` · `keyword` |
+| Reranker | `none` · `cross_encoder` · `cohere` |
+| Retrieval | `dense` · `sparse` (BM25) · `hybrid` (RRF) |
 
-### Provider Abstraction (ADR-008)
+Adding a new provider = implement the ABC in `app/providers/{category}/` + one line in `app/providers/registry.py`. Nothing else changes.
 
-Five abstract base classes in `app/interfaces/` define locked contracts:
+---
 
-| Interface | Method | Sync/Async |
-|-----------|--------|------------|
-| `VectorStore` | `upsert`, `query`, `delete_namespace`, `health` | async |
-| `ChunkingStrategy` | `chunk` | sync |
-| `Reranker` | `rerank` | sync |
-| `EmbeddingProvider` | `embed` | async |
-| `LLMProvider` | `generate` | async |
+## Tests
 
-Adding a new provider requires exactly **two changes**: implement the ABC in `app/providers/{category}/`, then register it in `app/providers/registry.py`. No service, pipeline, or router file is touched.
+```bash
+uv sync
+source .venv/bin/activate
 
-`PassthroughReranker` satisfies the `Reranker` interface with a no-op, making reranking opt-in without pipeline conditionals.
+pytest                   # unit tests
+pytest -m integration    # requires running databases
+```
 
-`app/core/dependencies.py` is the **only** file permitted to read from registries — all other code receives provider instances via FastAPI dependency injection.
-
-### Chunking Strategies (ADR-007)
-
-- **Semantic**: spaCy sentence segmentation + `sentence-transformers` embeddings; greedily merge adjacent sentences while cosine similarity ≥ 0.75; `tiktoken` enforces max token size.
-- **Hierarchical**: large parent windows (1024 tokens) split into child windows (256 tokens, 25 overlap); parent text embedded in `ChunkMetadata.parent_text`.
-- **Document-aware**: line-based regex detection of Markdown headings, dividers, and tables; splits by structural sections; fixed-window subchunking for oversized sections.
-
-### Vector Stores
-
-- **pgvector** — default, no extra infra; one table per namespace.
-- **Qdrant** (ADR-011) — `AsyncQdrantClient`, one collection per `{tenant_id}_{agent_id}` namespace; namespace verified on every query result.
-- **Pinecone** (ADR-012) — shared index `truerag`, Pinecone native namespaces for isolation; SDK calls wrapped in `asyncio.to_thread`.
-
-All three enforce namespace isolation at the read path and raise `NamespaceViolationError` on mismatch.
-
-Embedding provider change with existing vectors sets `embedding_provider_mismatch=True` on the agent, blocking queries until a full reindex is enqueued (ADR-013).
-
-### Retrieval Modes (ADR-008)
-
-- **dense** — ANN vector similarity.
-- **sparse** — query-time BM25 (`rank-bm25`, `BM25Okapi`) built from corpus fetched from the agent namespace. O(N) per query; acceptable at MVP scale. Persistent sparse index deferred to when p95 latency regresses at scale.
-- **hybrid** — dense + sparse in parallel, fused via Reciprocal Rank Fusion (RRF).
-
-### Reranking (ADR-009)
-
-Retrieve-wide-rerank-narrow pattern: fetch `max(top_k, rerank_pool_size)` candidates, rerank, truncate to `top_k`.
-
-- `cross_encoder` — `cross-encoder/ms-marco-MiniLM-L-6-v2` via `sentence-transformers`, synchronous, local inference.
-- `cohere` — `rerank-english-v3.0` via Cohere API, key from AWS Secrets Manager.
-- `none` — `PassthroughReranker`, no-op.
-
-### Rate Limiting (ADR-007)
-
-In-process fixed-window counter per tenant per minute via `RateLimiterMiddleware`. Each replica maintains its own `_counters` dict — effective limit is `N × rpm` across N replicas. No Redis dependency for v1. Redis-backed sliding window deferred to v2.
-
-### LLM Providers (ADR-014)
-
-`OpenAILLMProvider` (chat completions) and `BedrockLLMProvider` (`bedrock-runtime:InvokeModel`, Anthropic schema by default), both registered in `LLM_REGISTRY`. Failures normalized to `ProviderUnavailableError`.
-
-### Metrics (ADR-011)
-
-In-process Prometheus counters/histograms (`prometheus_client`), reset on restart by design. Counter resets handled in dashboards with `increase()`. Worker ingestion counts sourced from CloudWatch log metric filters on structured logs, not API-process memory.
-
-### Eval & Regression Detection (ADR-018, ADR-019)
-
-RAGAS evaluation (`faithfulness`, `answer_relevancy`, `context_recall`, `context_precision`) runs via `POST /v1/agents/{id}/eval/run`. When faithfulness drops below the agent's configured threshold, a `FaithfulnessRegression` CloudWatch metric is emitted (namespace `TrueRAG/EvalQuality`, dimensions `tenant_id`/`agent_id`). CloudWatch Alarm → SNS → email for alert delivery in v1; Slack/webhooks deferred to v2.
-
-For CI/CD: run `ci.yml` on PRs (Ruff, mypy strict, pytest). Run `deploy.yml` on `main` (Docker build → ECR → ECS rolling deploy → blocking RAGAS eval gate against a dedicated eval agent). If the eval gate fails, the deployment is marked failed; manual rollback via task definition revision.
+---
 
 ## Project Structure
 
 ```
 app/
-  api/v1/          HTTP routes (FastAPI)
-  core/            Config, auth, middleware, errors, decorators
-  db/dao/          MongoDB DAO layer (Beanie ODM)
-  interfaces/      Abstract provider ABCs (locked contracts)
-  models/          Beanie documents + Pydantic schemas
-  pipelines/       Ingestion and query pipeline orchestration
-  providers/       Concrete provider implementations + registry
-  services/        Business logic (agent, query, eval, tenant, audit, metrics)
-  utils/           Observability, cost tracker, file store, secrets
-  workers/         Ingestion worker (Kafka/SQS/local queue)
+  api/v1/        Routes (FastAPI)
+  core/          Config, auth, RBAC, middleware, errors
+  db/dao/        MongoDB DAO (Beanie ODM)
+  interfaces/    Abstract provider ABCs
+  models/        Beanie documents + Pydantic schemas
+  pipelines/     Ingestion + query orchestration
+  providers/     Concrete implementations + registry
+  services/      Business logic
+  utils/         Observability, PII, cost tracker, secrets
+  workers/       Ingestion worker (Kafka / SQS / local)
 scripts/
-  seed_tenant.py   Bootstrap a tenant + agent for local dev
+  seed_tenant.py
+infra/
+  terraform/     AWS ECS, ALB, DynamoDB, SQS, CloudWatch
+  .github/       CI (lint + test) + CD (build → ECR → ECS → eval gate)
 tests/
-  pipelines/
-  workers/
-  conftest.py
 ```
